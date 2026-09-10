@@ -46,7 +46,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "wtkpl2office-sudo",
+        "owner": "officebkky-sketch",
         "repo": "school-grading-wtk"
       }
     ],
