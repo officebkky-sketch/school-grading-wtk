@@ -224,33 +224,6 @@ export const App: React.FC = () => {
       }
     });
 
-    // Rehydrate scores & subjects from cloud on initial load
-    CloudSyncEngine.fetchAllScoresFromCloud(config.academicYear).then((cloudData) => {
-      if (cloudData) {
-        if (cloudData.scores && Object.keys(cloudData.scores).length > 0) {
-          setScoresStore(prev => {
-            const merged = { ...prev };
-            for (const [cls, subMap] of Object.entries(cloudData.scores)) {
-              if (!merged[cls]) merged[cls] = {};
-              for (const [subId, stuMap] of Object.entries(subMap)) {
-                if (!merged[cls][subId]) merged[cls][subId] = {};
-                merged[cls][subId] = { ...merged[cls][subId], ...stuMap };
-              }
-            }
-            localStorage.setItem('pp5_scores', JSON.stringify(merged));
-            return merged;
-          });
-        }
-        if (cloudData.subjectsMap && Object.keys(cloudData.subjectsMap).length > 0) {
-          setClassSubjects(prev => {
-            const merged = { ...prev, ...cloudData.subjectsMap };
-            localStorage.setItem('pp5_class_subjects', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      }
-    });
-
     // Network Online Listener: auto-flush pending outbox queue
     const handleOnline = () => {
       CloudSyncEngine.processPendingOutbox();
@@ -290,6 +263,70 @@ export const App: React.FC = () => {
     }
     return CLASS_SUBJECTS_MAP;
   });
+
+  // Auto-persist academic config whenever it changes (e.g. academicYear, semester, classLevel)
+  useEffect(() => {
+    localStorage.setItem('pp5_config', JSON.stringify(config));
+  }, [config]);
+
+  // Rehydrate scores & subjects from cloud whenever academicYear changes
+  useEffect(() => {
+    // 1. ลองโหลดจาก Local Cache ประจำปีการศึกษาก่อนเพื่อความรวดเร็ว (Instant UI)
+    const cachedYearScores = localStorage.getItem(`pp5_scores_${config.academicYear}`);
+    if (cachedYearScores) {
+      try {
+        const parsed = JSON.parse(cachedYearScores);
+        if (parsed && Object.keys(parsed).length > 0) {
+          setScoresStore(parsed);
+        }
+      } catch {}
+    } else if (config.academicYear === '2569') {
+      const baseScores = localStorage.getItem('pp5_scores');
+      if (baseScores) {
+        try {
+          const parsed = JSON.parse(baseScores);
+          if (parsed && Object.keys(parsed).length > 0) {
+            setScoresStore({ ...INITIAL_SCORES, ...parsed });
+          }
+        } catch {}
+      }
+    } else {
+      setScoresStore(INITIAL_SCORES);
+    }
+
+    // 2. ดึงข้อมูลคะแนนและรายวิชาล่าสุดของปีการศึกษานั้นจาก Supabase Cloud
+    let isSubscribed = true;
+    CloudSyncEngine.fetchAllScoresFromCloud(config.academicYear).then((cloudData) => {
+      if (!isSubscribed || !cloudData) return;
+      if (cloudData.scores && Object.keys(cloudData.scores).length > 0) {
+        setScoresStore(prev => {
+          const merged = { ...prev };
+          for (const [cls, subMap] of Object.entries(cloudData.scores)) {
+            if (!merged[cls]) merged[cls] = {};
+            for (const [subId, stuMap] of Object.entries(subMap)) {
+              if (!merged[cls][subId]) merged[cls][subId] = {};
+              merged[cls][subId] = { ...merged[cls][subId], ...stuMap };
+            }
+          }
+          localStorage.setItem(`pp5_scores_${config.academicYear}`, JSON.stringify(merged));
+          localStorage.setItem('pp5_scores', JSON.stringify(merged));
+          return merged;
+        });
+      }
+      if (cloudData.subjectsMap && Object.keys(cloudData.subjectsMap).length > 0) {
+        setClassSubjects(prev => {
+          const merged = { ...prev, ...cloudData.subjectsMap };
+          localStorage.setItem(`pp5_class_subjects_${config.academicYear}`, JSON.stringify(merged));
+          localStorage.setItem('pp5_class_subjects', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [config.academicYear]);
 
   // Attendance Detail Store: classLevel -> (studentId -> AttendanceDetail)
   const [attendanceStore, setAttendanceStore] = useState<Record<string, Record<string, AttendanceDetail>>>(() => {
@@ -440,6 +477,7 @@ export const App: React.FC = () => {
         ...prev,
         [config.classLevel]: newCls
       };
+      localStorage.setItem(`pp5_scores_${config.academicYear}`, JSON.stringify(updated));
       localStorage.setItem('pp5_scores', JSON.stringify(updated));
       return updated;
     });
@@ -464,7 +502,7 @@ export const App: React.FC = () => {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [scoresStore, config.classLevel]);
+  }, [scoresStore, config.classLevel, config.academicYear]);
 
   const handleUpdateStudentGrowth = (studentId: string, weight: number, height: number) => {
     setClassStudents(prev => {

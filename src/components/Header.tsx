@@ -176,11 +176,22 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             </div>
 
-            {/* Academic Year */}
+            {/* Academic Year Selector */}
             <div className="flex items-center bg-emerald-900/60 rounded-lg px-3 py-1.5 border border-emerald-700">
               <Award className="w-4 h-4 text-emerald-300 mr-1.5 shrink-0" />
               <span className="text-xs text-emerald-300 mr-1.5">ปี:</span>
-              <span className="text-sm font-bold text-amber-300">{config.academicYear}</span>
+              <select
+                value={config.academicYear}
+                onChange={(e) => onConfigChange({ ...config, academicYear: e.target.value })}
+                className="bg-emerald-800 text-amber-300 text-sm font-bold rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"
+                title="เลือกปีการศึกษา"
+              >
+                {['2570', '2569', '2568', '2567', '2566'].map((yr) => (
+                  <option key={yr} value={yr} className="text-white bg-emerald-900">
+                    {yr}
+                  </option>
+                ))}
+              </select>
             </div>
 
           </div>
