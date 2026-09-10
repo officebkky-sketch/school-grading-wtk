@@ -229,9 +229,10 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                 {onDeleteSubject && subjects.length > 1 && (
                   <button
                     onClick={() => {
-                      if (confirm(`คุณต้องการลบรายวิชา "${selectedSubject?.name}" ออกจากระบบใช่หรือไม่?`)) {
+                      if (confirm(`คุณต้องการลบรายวิชา "${selectedSubject?.name}" (${selectedSubject?.code}) ออกจากระบบใช่หรือไม่?\n\n⚠️ คำเตือน: ข้อมูลคะแนนทั้งหมดที่เคยบันทึกในรายวิชานี้จะถูกลบออกจากระบบอย่างถาวร`)) {
+                        const remaining = subjects.filter(s => s.id !== selectedSubjectId);
                         onDeleteSubject(selectedSubjectId);
-                        setSelectedSubjectId(subjects[0]?.id || '');
+                        setSelectedSubjectId(remaining[0]?.id || '');
                       }
                     }}
                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"

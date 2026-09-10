@@ -481,10 +481,22 @@ export const App: React.FC = () => {
   };
 
   const handleAddSubject = (newSub: SubjectConfig) => {
-    setClassSubjects(prev => {
-      const list = prev[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
-      return { ...prev, [config.classLevel]: [...list, newSub] };
-    });
+    const list = classSubjects[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
+    const updatedList = [...list, newSub];
+    const newState = { ...classSubjects, [config.classLevel]: updatedList };
+    setClassSubjects(newState);
+    localStorage.setItem(`pp5_class_subjects_${config.academicYear}`, JSON.stringify(newState));
+    localStorage.setItem('pp5_class_subjects', JSON.stringify(newState));
+
+    const currentStudents = classStudents[config.classLevel] || [];
+    const currentClassScores = scoresStore[config.classLevel] || {};
+    CloudSyncEngine.autoSyncClassToCloud(
+      config.classLevel,
+      updatedList,
+      currentStudents,
+      currentClassScores,
+      config
+    );
   };
 
   const handleUpdateSubject = (updatedSub: SubjectConfig) => {
@@ -509,11 +521,58 @@ export const App: React.FC = () => {
     );
   };
 
-  const handleDeleteSubject = (id: string) => {
-    setClassSubjects(prev => {
-      const list = prev[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
-      return { ...prev, [config.classLevel]: list.filter(s => s.id !== id) };
+  const handleDeleteSubject = async (id: string) => {
+    const list = classSubjects[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
+    const subjectToDelete = list.find(s => s.id === id);
+    const updatedList = list.filter(s => s.id !== id);
+
+    // 1. ลบออกจาก classSubjects ทันที (Instant UI) พร้อมบันทึกลง LocalStorage
+    const nextSubjects = { ...classSubjects, [config.classLevel]: updatedList };
+    setClassSubjects(nextSubjects);
+    localStorage.setItem(`pp5_class_subjects_${config.academicYear}`, JSON.stringify(nextSubjects));
+    localStorage.setItem('pp5_class_subjects', JSON.stringify(nextSubjects));
+
+    // 2. ลบคะแนนของวิชาที่ถูกลบออกจาก scoresStore ทั้งใน state และ localStorage ทันที
+    setScoresStore(prev => {
+      const updated = { ...prev };
+      if (updated[config.classLevel]) {
+        const clsScores = { ...updated[config.classLevel] };
+        delete clsScores[id];
+        if (subjectToDelete?.code) {
+          delete clsScores[subjectToDelete.code.trim()];
+          delete clsScores[subjectToDelete.code.replace(/\s+/g, '').toUpperCase()];
+        }
+        updated[config.classLevel] = clsScores;
+        localStorage.setItem(`pp5_scores_${config.academicYear}`, JSON.stringify(updated));
+        localStorage.setItem('pp5_scores', JSON.stringify(updated));
+      }
+      return updated;
     });
+
+    // 3. สั่งลบวิชาและคะแนนที่เกี่ยวข้องบน Cloud ทันที (DB-First)
+    await CloudSyncEngine.deleteSubjectAndGrades(
+      id,
+      subjectToDelete?.code,
+      config.classLevel,
+      config.academicYear
+    );
+
+    // 4. สั่ง sync อัปเดตข้อมูลชั้นเรียนขึ้น Cloud เพื่อล้าง orphan subjects และปรับปรุงสถิติ
+    const currentClassScores = scoresStore[config.classLevel] || {};
+    const filteredClassScores = { ...currentClassScores };
+    delete filteredClassScores[id];
+    if (subjectToDelete?.code) {
+      delete filteredClassScores[subjectToDelete.code.trim()];
+      delete filteredClassScores[subjectToDelete.code.replace(/\s+/g, '').toUpperCase()];
+    }
+
+    CloudSyncEngine.autoSyncClassToCloud(
+      config.classLevel,
+      updatedList,
+      currentStudents,
+      filteredClassScores,
+      config
+    );
   };
 
   const handleUpdateScore = (subjectId: string, studentId: string, updatedRecord: StudentScoreRecord) => {

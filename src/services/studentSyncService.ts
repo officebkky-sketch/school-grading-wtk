@@ -309,26 +309,59 @@ export class StudentSyncService {
 
         if (dbGrades && dbGrades.length > 0) {
           cloudGradesFound = true;
-          // รายวิชาอิงจาก Supabase ถ้ามี หรือ Fallback เป็น Local Subjects
+          const normCode = (c: string) => (c || '').replace(/\s+/g, '').toUpperCase();
           const localSubs = localClassSubjects[foundClassLevel] || CLASS_SUBJECTS_MAP[foundClassLevel] || [];
-          const activeSubjects: SubjectConfig[] = (dbSubjects && dbSubjects.length > 0)
-            ? dbSubjects.map((s: any) => {
-                const matchLocal = localSubs.find(ls => ls.code.trim() === s.code?.trim() || ls.id === s.id);
-                return {
-                  id: s.id,
-                  code: s.code?.trim() || matchLocal?.code || '',
-                  name: s.name?.trim() || matchLocal?.name || '',
-                  type: (s.type || matchLocal?.type || 'พื้นฐาน') as any,
-                  credits: Number(s.credits) || matchLocal?.credits || 1,
-                  hoursPerYear: Number(s.hours_per_year) || matchLocal?.hoursPerYear || 80,
-                  fullScoreTerm1: Number(s.full_score_term1) || matchLocal?.fullScoreTerm1 || 50,
-                  fullScoreTerm2: Number(s.full_score_term2) || matchLocal?.fullScoreTerm2 || 50
-                };
-              })
-            : localSubs;
+
+          // กรองและ Deduplicate รายวิชาจาก Supabase พร้อมตัดวิชาที่ถูกลบออกไปแล้ว
+          let activeSubjects: SubjectConfig[] = [];
+          if (dbSubjects && dbSubjects.length > 0) {
+            const seenCodes = new Set<string>();
+            const mappedSubs: SubjectConfig[] = [];
+
+            for (const s of dbSubjects) {
+              const nc = normCode(s.code);
+              if (seenCodes.has(nc)) continue; // ข้ามวิชาซ้ำ
+              seenCodes.add(nc);
+
+              const matchLocal = localSubs.find(ls => normCode(ls.code) === nc || ls.id === s.id);
+
+              // หากใน localClassSubjects มีรายวิชาที่กำหนดไว้เฉพาะ (และไม่ใช่ CLASS_SUBJECTS_MAP ค่าเริ่มต้น)
+              // และวิชานี้ไม่ได้อยู่ใน localClassSubjects แสดงว่าเป็นวิชาที่ถูกลบออกไปแล้ว! ให้ข้าม ไม่นำมาแสดงผล
+              if (localClassSubjects[foundClassLevel] && localClassSubjects[foundClassLevel].length > 0) {
+                const isStillActiveInLocal = localClassSubjects[foundClassLevel].some(
+                  ls => normCode(ls.code) === nc || ls.id === s.id
+                );
+                if (!isStillActiveInLocal) {
+                  continue; // ข้ามวิชาที่ถูกลบออกไปแล้ว
+                }
+              }
+
+              mappedSubs.push({
+                id: s.id,
+                code: s.code?.trim() || matchLocal?.code || '',
+                name: s.name?.trim() || matchLocal?.name || '',
+                type: (s.type || matchLocal?.type || 'พื้นฐาน') as any,
+                credits: Number(s.credits) || matchLocal?.credits || 1,
+                hoursPerYear: Number(s.hours_per_year) || matchLocal?.hoursPerYear || 80,
+                fullScoreTerm1: Number(s.full_score_term1) || matchLocal?.fullScoreTerm1 || 50,
+                fullScoreTerm2: Number(s.full_score_term2) || matchLocal?.fullScoreTerm2 || 50
+              });
+            }
+            activeSubjects = mappedSubs;
+          } else {
+            activeSubjects = localSubs;
+          }
 
           subjectsWithGrades = activeSubjects.map(sub => {
-            const gRow = dbGrades.find((g: any) => g.subject_id === sub.id || (sub.code && g.subject_id === sub.code));
+            const subNorm = normCode(sub.code);
+            const gRow = dbGrades.find((g: any) => {
+              if (g.subject_id === sub.id) return true;
+              if (sub.code && g.subject_id === sub.code.trim()) return true;
+              if (subNorm && normCode(g.subject_id) === subNorm) return true;
+              const matchedDbSub = dbSubjects?.find((ds: any) => ds.id === g.subject_id);
+              if (matchedDbSub && normCode(matchedDbSub.code) === subNorm) return true;
+              return false;
+            });
             const scoreRecord: StudentScoreRecord | null = gRow ? {
               studentId: cleanStudentId,
               formative1: gRow.formative1,

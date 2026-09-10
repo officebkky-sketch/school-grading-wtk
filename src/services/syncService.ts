@@ -45,11 +45,40 @@ export class CloudSyncEngine {
         .eq('class_level', classLevel)
         .eq('academic_year', config.academicYear);
 
-      const existingMap = new Map<string, string>(); // code -> id
-      dbSubjectsExisting?.forEach(es => existingMap.set(es.code.trim(), es.id));
+      const normCode = (c: string) => (c || '').replace(/\s+/g, '').toUpperCase();
+      const existingMap = new Map<string, string>(); // normCode/id -> id
+      dbSubjectsExisting?.forEach(es => {
+        if (es.code) existingMap.set(normCode(es.code), es.id);
+        if (es.id) existingMap.set(es.id, es.id);
+      });
+
+      // ตรวจจับและลบวิชาที่ไม่อยู่ในรายการ subjects ของห้องนี้แล้ว (Orphaned / Deleted Subjects)
+      const activeNormCodes = new Set(subjects.map(s => normCode(s.code)));
+      const activeIds = new Set(subjects.map(s => s.id));
+
+      const orphanSubjects = (dbSubjectsExisting || []).filter(es => {
+        const esNorm = normCode(es.code);
+        return !activeNormCodes.has(esNorm) && !activeIds.has(es.id);
+      });
+
+      if (orphanSubjects.length > 0) {
+        const orphanIds = orphanSubjects.map(os => os.id);
+        // ลบคะแนนของวิชาที่ถูกลบออกจากตาราง student_grades
+        await supabase
+          .from('student_grades')
+          .delete()
+          .in('subject_id', orphanIds)
+          .eq('academic_year', config.academicYear);
+
+        // ลบวิชาออกจากตาราง subjects
+        await supabase
+          .from('subjects')
+          .delete()
+          .in('id', orphanIds);
+      }
 
       const subjectsPayload = subjects.map(s => {
-        const existingId = existingMap.get(s.code.trim());
+        const existingId = existingMap.get(normCode(s.code)) || existingMap.get(s.id);
         const row: any = {
           code: s.code.trim(),
           name: s.name.trim(),
@@ -83,16 +112,19 @@ export class CloudSyncEngine {
 
       if (fetchSubErr) throw new Error(`ไม่สามารถอ่านข้อมูลรายวิชา: ${fetchSubErr.message}`);
 
-      const subjectIdMap = new Map<string, string>(); // code -> uuid
-      dbSubjects?.forEach(ds => subjectIdMap.set(ds.code.trim(), ds.id));
+      const subjectIdMap = new Map<string, string>(); // normCode/uuid -> uuid
+      dbSubjects?.forEach(ds => {
+        if (ds.code) subjectIdMap.set(normCode(ds.code), ds.id);
+        if (ds.id) subjectIdMap.set(ds.id, ds.id);
+      });
 
       // 2. Sync Student Grades
       const gradesPayload: any[] = [];
       for (const sub of subjects) {
-        const subDbId = subjectIdMap.get(sub.code.trim());
+        const subDbId = subjectIdMap.get(normCode(sub.code)) || subjectIdMap.get(sub.id);
         if (!subDbId) continue;
 
-        const subScores = scores[sub.id] || {};
+        const subScores = scores[sub.id] || scores[subDbId] || {};
         for (const s of students) {
           const rec = subScores[s.studentId];
           if (!rec) continue;
@@ -239,9 +271,10 @@ export class CloudSyncEngine {
       const dbGrades = gradesRes.data || [];
       const dbSubjects = subjectsRes.data || [];
 
-      if (dbGrades.length === 0) return null;
+      if (dbGrades.length === 0 && dbSubjects.length === 0) return null;
 
-      // จัดกลุ่มวิชาตาม class_level
+      const normCode = (c: string) => (c || '').replace(/\s+/g, '').toUpperCase();
+      // จัดกลุ่มวิชาตาม class_level พร้อมตัดวิชาที่ซ้ำกัน (Deduplicate by normalized code)
       const subjectsMap: Record<string, SubjectConfig[]> = {};
       const subjectLookup = new Map<string, { classLevel: string; subjectId: string }>();
 
@@ -249,27 +282,38 @@ export class CloudSyncEngine {
         const cls = s.class_level?.trim() || 'ป.1';
         if (!subjectsMap[cls]) subjectsMap[cls] = [];
 
-        const subConfig: SubjectConfig = {
-          id: s.id,
-          code: s.code?.trim() || '',
-          name: s.name?.trim() || '',
-          type: (s.type || 'พื้นฐาน') as any,
-          credits: Number(s.credits) || 1,
-          hoursPerYear: Number(s.hours_per_year) || 80,
-          fullScoreTerm1: Number(s.full_score_term1) || 50,
-          fullScoreTerm2: Number(s.full_score_term2) || 50
-        };
+        const nCode = normCode(s.code);
+        const existingInCls = subjectsMap[cls].find(item => normCode(item.code) === nCode);
 
-        subjectsMap[cls].push(subConfig);
-        subjectLookup.set(s.id, { classLevel: cls, subjectId: s.id });
-        if (s.code) subjectLookup.set(s.code.trim(), { classLevel: cls, subjectId: s.id });
+        let activeSubId = s.id;
+        if (existingInCls) {
+          activeSubId = existingInCls.id;
+        } else {
+          const subConfig: SubjectConfig = {
+            id: s.id,
+            code: s.code?.trim() || '',
+            name: s.name?.trim() || '',
+            type: (s.type || 'พื้นฐาน') as any,
+            credits: Number(s.credits) || 1,
+            hoursPerYear: Number(s.hours_per_year) || 80,
+            fullScoreTerm1: Number(s.full_score_term1) || 50,
+            fullScoreTerm2: Number(s.full_score_term2) || 50
+          };
+          subjectsMap[cls].push(subConfig);
+        }
+
+        subjectLookup.set(s.id, { classLevel: cls, subjectId: activeSubId });
+        if (s.code) {
+          subjectLookup.set(s.code.trim(), { classLevel: cls, subjectId: activeSubId });
+          subjectLookup.set(nCode, { classLevel: cls, subjectId: activeSubId });
+        }
       });
 
       // จัดกลุ่มคะแนน: classLevel -> subjectId -> studentId -> StudentScoreRecord
       const scores: Record<string, Record<string, Record<string, StudentScoreRecord>>> = {};
 
       dbGrades.forEach(g => {
-        const lookup = subjectLookup.get(g.subject_id);
+        const lookup = subjectLookup.get(g.subject_id) || subjectLookup.get(normCode(g.subject_id));
         if (!lookup) return;
 
         const { classLevel, subjectId } = lookup;
@@ -296,6 +340,81 @@ export class CloudSyncEngine {
     } catch (err) {
       console.warn('Rehydration error from cloud:', err);
       return null;
+    }
+  }
+
+  /**
+   * ลบรายวิชาและคะแนนที่เกี่ยวข้องออกจาก Supabase Cloud ทันที (DB-First)
+   */
+  static async deleteSubjectAndGrades(
+    subjectId: string,
+    subjectCode?: string,
+    classLevel?: string,
+    academicYear: string = '2569'
+  ): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    try {
+      const normCode = (c: string) => (c || '').replace(/\s+/g, '').toUpperCase();
+      const targetNormCode = subjectCode ? normCode(subjectCode) : '';
+
+      let query = supabase
+        .from('subjects')
+        .select('id, code')
+        .eq('academic_year', academicYear);
+
+      if (classLevel) {
+        query = query.eq('class_level', classLevel);
+      }
+
+      const { data: dbSubs, error } = await query;
+      if (error) throw error;
+
+      const matchedIds: string[] = [];
+      dbSubs?.forEach(s => {
+        if (s.id === subjectId) {
+          matchedIds.push(s.id);
+        } else if (targetNormCode && s.code && normCode(s.code) === targetNormCode) {
+          matchedIds.push(s.id);
+        }
+      });
+
+      if (matchedIds.length === 0 && subjectId) {
+        matchedIds.push(subjectId);
+      }
+
+      if (matchedIds.length > 0) {
+        // 1. ลบคะแนนใน student_grades ที่เชื่อมโยงกับวิชานี้
+        await supabase
+          .from('student_grades')
+          .delete()
+          .in('subject_id', matchedIds)
+          .eq('academic_year', academicYear);
+
+        // 2. ลบ subject_id ที่ตรงกับ code ตรงๆ (กรณีมี record เก่าที่เก็บ code เป็น subject_id)
+        if (subjectCode) {
+          await supabase
+            .from('student_grades')
+            .delete()
+            .eq('subject_id', subjectCode.trim())
+            .eq('academic_year', academicYear);
+          if (targetNormCode) {
+            await supabase
+              .from('student_grades')
+              .delete()
+              .eq('subject_id', targetNormCode)
+              .eq('academic_year', academicYear);
+          }
+        }
+
+        // 3. ลบวิชาออกจากตาราง subjects
+        await supabase
+          .from('subjects')
+          .delete()
+          .in('id', matchedIds);
+      }
+    } catch (e) {
+      console.warn('Error deleting subject and grades from cloud:', e);
     }
   }
 
