@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "build:koko": "tsc -b && vite build --mode koko",
     "preview": "vite preview",
+    "start": "electron .",
     "electron:dist": "tsc -b && vite build && electron-builder --win"
   },
   "dependencies": {
