@@ -70,6 +70,22 @@ export interface StudentScoreRecord {
   yearlyTotal: number | null; // รวมทั้งปี (100)
   grade: string;              // "4", "3.5", "3", "2.5", "2", "1.5", "1", "0", "ร", "มส"
   isPassed: boolean;
+
+  // โครงสร้างคะแนนระบบ School MIS สพฐ. 100% (ครั้งที่ 1 - 10)
+  c1?: number | null;             // ครั้งที่ 1 ก่อนกลางภาค (เต็ม 10)
+  c2?: number | null;             // ครั้งที่ 2 ก่อนกลางภาค (เต็ม 10)
+  c3?: number | null;             // ครั้งที่ 3 ก่อนกลางภาค (เต็ม 10)
+  c4?: number | null;             // ครั้งที่ 4 ก่อนกลางภาค (เต็ม 5)
+  cSumPre?: number | null;        // รวมก่อนกลางภาค (เต็ม 35 = c1+c2+c3+c4)
+  c5?: number | null;             // ครั้งที่ 5 กลางภาค (เต็ม 15)
+  cRetakeMidterm?: number | null; // แก้ตัวกลางภาค
+  c6?: number | null;             // ครั้งที่ 6 หลังกลางภาค (เต็ม 10)
+  c7?: number | null;             // ครั้งที่ 7 หลังกลางภาค (เต็ม 10)
+  c8?: number | null;             // ครั้งที่ 8 หลังกลางภาค (เต็ม 15)
+  c9?: number | null;             // ครั้งที่ 9 หลังกลางภาค (เต็ม 0)
+  cSumPost?: number | null;       // รวมหลังกลางภาค (เต็ม 35 = c6+c7+c8+c9)
+  cSumFormative?: number | null;  // รวมระหว่างภาค (เต็ม 85 = cSumPre + c5 + cSumPost)
+  c10?: number | null;            // ครั้งที่ 10 ปลายภาค (เต็ม 15)
 }
 
 export interface StudentAttendance {

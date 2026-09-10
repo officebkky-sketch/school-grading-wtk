@@ -94,22 +94,31 @@ export function exportSchoolMIS_SingleSubjectCSV(
     const colFirstName = cleanName;
     const colLastName = lastName;
 
-    const c1 = '';
-    const c2 = '';
-    const c3 = '';
-    const c4 = '';
-    const cSum1 = formative !== null && formative !== undefined ? formative : '';
-    const c5_midterm = midterm !== null && midterm !== undefined ? midterm : '';
-    const cRetakeMidterm = '';
-    const c6 = '';
-    const c7 = '';
-    const c8 = '';
-    const c9 = '';
-    const cSum2 = '';
-    const cSumFormative = formative !== null && formative !== undefined ? formative : '';
-    const c10_final = finalScore !== null && finalScore !== undefined ? finalScore : '';
-    const cTotal = total !== null && total !== undefined ? total : '';
-    const cGrade = grade;
+    // คะแนนดิบจาก School MIS (ครั้งที่ 1..10)
+    const c1 = rec?.c1 !== null && rec?.c1 !== undefined ? rec.c1 : '';
+    const c2 = rec?.c2 !== null && rec?.c2 !== undefined ? rec.c2 : '';
+    const c3 = rec?.c3 !== null && rec?.c3 !== undefined ? rec.c3 : '';
+    const c4 = rec?.c4 !== null && rec?.c4 !== undefined ? rec.c4 : '';
+    const cSum1 = rec?.cSumPre !== null && rec?.cSumPre !== undefined 
+      ? rec.cSumPre 
+      : (formative !== null && formative !== undefined ? formative : '');
+    const c5_midterm = rec?.c5 !== null && rec?.c5 !== undefined 
+      ? rec.c5 
+      : (midterm !== null && midterm !== undefined ? midterm : '');
+    const cRetakeMidterm = rec?.cRetakeMidterm !== null && rec?.cRetakeMidterm !== undefined ? rec.cRetakeMidterm : '';
+    const c6 = rec?.c6 !== null && rec?.c6 !== undefined ? rec.c6 : '';
+    const c7 = rec?.c7 !== null && rec?.c7 !== undefined ? rec.c7 : '';
+    const c8 = rec?.c8 !== null && rec?.c8 !== undefined ? rec.c8 : '';
+    const c9 = rec?.c9 !== null && rec?.c9 !== undefined ? rec.c9 : '';
+    const cSum2 = rec?.cSumPost !== null && rec?.cSumPost !== undefined ? rec.cSumPost : '';
+    const cSumFormative = rec?.cSumFormative !== null && rec?.cSumFormative !== undefined 
+      ? rec.cSumFormative 
+      : ((rec?.cSumPre ?? (typeof formative === 'number' ? formative : 0)) + (rec?.c5 ?? (typeof midterm === 'number' ? midterm : 0)) + (rec?.cSumPost ?? 0));
+    const c10_final = rec?.c10 !== null && rec?.c10 !== undefined 
+      ? rec.c10 
+      : (finalScore !== null && finalScore !== undefined ? finalScore : '');
+    const cTotal = rec?.yearlyTotal ?? total ?? '';
+    const cGrade = rec?.grade && rec.grade !== '-' ? rec.grade : grade;
 
     const line = [
       colSeq,
@@ -331,3 +340,146 @@ export function exportToSchoolMISExcel(
 
   XLSX.writeFile(wb, fileName);
 }
+
+/**
+ * นำเข้าคะแนนจากไฟล์ CSV ของระบบ School MIS สพฐ.
+ * รองรับไฟล์ต้นฉบับ เช่น 93010069_06_1_ไฟล์นำเข้าgpa_ชั้น_ป.3_หัอง_1.csv
+ */
+export function importSchoolMIS_SingleSubjectCSV(
+  csvText: string,
+  existingScores: Record<string, StudentScoreRecord>
+): {
+  success: boolean;
+  message: string;
+  updatedScores?: Record<string, StudentScoreRecord>;
+  importedCount?: number;
+} {
+  try {
+    const cleanText = csvText.replace(/^\uFEFF/, '').trim();
+    const lines = cleanText.split(/\r?\n/);
+    if (lines.length < 2) {
+      return { success: false, message: 'ไฟล์ CSV ไม่มีข้อมูลคะแนน' };
+    }
+
+    const updatedScores = { ...existingScores };
+    let importedCount = 0;
+
+    // ข้าม Header แถวแรก
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // แยกคอลัมน์แบบรองรับ quote
+      const cols: string[] = [];
+      let inQuote = false;
+      let currentVal = '';
+      for (let c = 0; c < line.length; c++) {
+        const ch = line[c];
+        if (ch === '"') {
+          inQuote = !inQuote;
+        } else if (ch === ',' && !inQuote) {
+          cols.push(currentVal.trim());
+          currentVal = '';
+        } else {
+          currentVal += ch;
+        }
+      }
+      cols.push(currentVal.trim());
+
+      // ตรวจสอบคอลัมน์อย่างน้อย 5 คอลัมน์ (มี studentId)
+      if (cols.length < 5) continue;
+
+      const studentId = cols[1]?.replace(/\D/g, '');
+      if (!studentId) continue;
+
+      const parseNum = (val: string | undefined): number | null => {
+        if (!val) return null;
+        const n = parseFloat(val.replace(/[^0-9.]/g, ''));
+        return isNaN(n) ? null : n;
+      };
+
+      const c1 = parseNum(cols[5]);
+      const c2 = parseNum(cols[6]);
+      const c3 = parseNum(cols[7]);
+      const c4 = parseNum(cols[8]);
+      const cSumPreInput = parseNum(cols[9]);
+      const c5 = parseNum(cols[10]);
+      const cRetakeMidterm = parseNum(cols[11]);
+      const c6 = parseNum(cols[12]);
+      const c7 = parseNum(cols[13]);
+      const c8 = parseNum(cols[14]);
+      const c9 = parseNum(cols[15]);
+      const cSumPostInput = parseNum(cols[16]);
+      const cSumFormativeInput = parseNum(cols[17]);
+      const c10 = parseNum(cols[18]);
+      const cTotalInput = parseNum(cols[19]);
+      const gpaInput = cols[20]?.replace(/["\s]/g, '') || '';
+
+      const hasPre = c1 !== null || c2 !== null || c3 !== null || c4 !== null;
+      const cSumPre = hasPre ? ((c1 ?? 0) + (c2 ?? 0) + (c3 ?? 0) + (c4 ?? 0)) : cSumPreInput;
+
+      const hasPost = c6 !== null || c7 !== null || c8 !== null || c9 !== null;
+      const cSumPost = hasPost ? ((c6 ?? 0) + (c7 ?? 0) + (c8 ?? 0) + (c9 ?? 0)) : cSumPostInput;
+
+      const sumFormative = (cSumPre !== null || c5 !== null || cSumPost !== null)
+        ? ((cSumPre ?? 0) + (c5 ?? 0) + (cSumPost ?? 0))
+        : cSumFormativeInput;
+
+      const totalAll = (sumFormative !== null || c10 !== null)
+        ? ((sumFormative ?? 0) + (c10 ?? 0))
+        : cTotalInput;
+
+      const finalGrade = gpaInput || (totalAll !== null ? GradingEngine.calculateGrade(totalAll) : '-');
+
+      const existing = updatedScores[studentId] || {
+        studentId,
+        formative1: null, midterm1: null, final1: null, total1: null,
+        formative2: null, midterm2: null, final2: null, total2: null,
+        yearlyTotal: null, grade: '-', isPassed: false
+      };
+
+      updatedScores[studentId] = {
+        ...existing,
+        c1,
+        c2,
+        c3,
+        c4,
+        cSumPre,
+        c5,
+        cRetakeMidterm,
+        c6,
+        c7,
+        c8,
+        c9,
+        cSumPost,
+        cSumFormative: sumFormative,
+        c10,
+        yearlyTotal: totalAll,
+        grade: finalGrade,
+        isPassed: totalAll !== null && totalAll >= 50,
+        // ซิงค์กับระบบ 2 เทอมเพื่อความเข้ากันได้ 100%
+        formative1: cSumPre,
+        midterm1: c5,
+        total1: (cSumPre !== null || c5 !== null) ? ((cSumPre ?? 0) + (c5 ?? 0)) : null,
+        formative2: cSumPost,
+        final2: c10,
+        total2: (cSumPost !== null || c10 !== null) ? ((cSumPost ?? 0) + (c10 ?? 0)) : null
+      };
+
+      importedCount++;
+    }
+
+    return {
+      success: true,
+      message: `นำเข้าคะแนนสำเร็จ ${importedCount} คน`,
+      updatedScores,
+      importedCount
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `เกิดข้อผิดพลาดในการประมวลผลไฟล์ CSV: ${err.message}`
+    };
+  }
+}
+

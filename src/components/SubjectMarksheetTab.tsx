@@ -2,7 +2,13 @@
 import React, { useState } from 'react';
 import { StudentProfile, SubjectConfig, StudentScoreRecord, AcademicConfig } from '../types/pp5Types';
 import { GradingEngine } from '../engines/gradingEngine';
-import { exportSchoolMIS_SingleSubjectCSV, exportTeacherPersonalBackupExcel } from '../utils/schoolMisExporter';
+import {
+  exportSchoolMIS_SingleSubjectCSV,
+  importSchoolMIS_SingleSubjectCSV,
+  exportTeacherPersonalBackupExcel,
+  sortStudentsForSchoolMIS,
+  extractCleanFirstName
+} from '../utils/schoolMisExporter';
 import { getBasicSubjectSortWeight } from '../utils/subjectSortUtils';
 import {
   BookOpen,
@@ -17,7 +23,9 @@ import {
   X,
   FileSpreadsheet,
   Download,
-  HardDriveDownload
+  Upload,
+  HardDriveDownload,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface Props {
@@ -168,6 +176,117 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
     }
 
     onUpdateScore(selectedSubjectId, studentId, updated);
+  };
+
+  // View Mode: 'schoolmis' (10 ครั้งตามแบบสพฐ.) หรือ 'semester' (แบบ 2 เทอม)
+  const [viewMode, setViewMode] = useState<'schoolmis' | 'semester'>('schoolmis');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  // คะแนนเต็มแต่ละครั้งตามมาตรฐาน School MIS (ตรงกับสกรีนช็อต 100%)
+  const fullScores = {
+    c1: 10,
+    c2: 10,
+    c3: 10,
+    c4: 5,
+    cSumPre: 35,
+    c5: 15,
+    c6: 10,
+    c7: 10,
+    c8: 15,
+    c9: 0,
+    cSumPost: 35,
+    cSumFormative: 85,
+    c10: 15,
+    total: 100,
+    gpa: 4
+  };
+
+  const handleSchoolMisScoreChange = (
+    studentId: string,
+    field: 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'cRetakeMidterm' | 'c6' | 'c7' | 'c8' | 'c9' | 'c10',
+    valStr: string
+  ) => {
+    const num = valStr === '' ? null : Math.max(0, Math.min(100, Number(valStr)));
+    const existing = currentSubjectScores[studentId] || {
+      studentId,
+      formative1: null, midterm1: null, final1: null, total1: null,
+      formative2: null, midterm2: null, final2: null, total2: null,
+      yearlyTotal: null, grade: '-', isPassed: false
+    };
+
+    const updated: StudentScoreRecord = { ...existing, [field]: num };
+
+    // 1. รวมก่อนกลางภาค (c1..c4)
+    const hasPre = (updated.c1 !== null && updated.c1 !== undefined) ||
+                   (updated.c2 !== null && updated.c2 !== undefined) ||
+                   (updated.c3 !== null && updated.c3 !== undefined) ||
+                   (updated.c4 !== null && updated.c4 !== undefined);
+    const sumPre = (updated.c1 ?? 0) + (updated.c2 ?? 0) + (updated.c3 ?? 0) + (updated.c4 ?? 0);
+    updated.cSumPre = hasPre ? sumPre : (existing.cSumPre ?? existing.formative1 ?? null);
+
+    // 2. รวมหลังกลางภาค (c6..c9)
+    const hasPost = (updated.c6 !== null && updated.c6 !== undefined) ||
+                    (updated.c7 !== null && updated.c7 !== undefined) ||
+                    (updated.c8 !== null && updated.c8 !== undefined) ||
+                    (updated.c9 !== null && updated.c9 !== undefined);
+    const sumPost = (updated.c6 ?? 0) + (updated.c7 ?? 0) + (updated.c8 ?? 0) + (updated.c9 ?? 0);
+    updated.cSumPost = hasPost ? sumPost : (existing.cSumPost ?? existing.formative2 ?? null);
+
+    // 3. รวมระหว่างภาค (ก่อนกลาง + กลาง c5 + หลังกลาง)
+    const effectivePre = updated.cSumPre ?? 0;
+    const effectiveMidterm = updated.c5 ?? updated.midterm1 ?? 0;
+    const effectivePost = updated.cSumPost ?? 0;
+    const hasFormative = hasPre || (updated.c5 !== null && updated.c5 !== undefined) || hasPost || (existing.formative1 !== null && existing.formative1 !== undefined);
+    updated.cSumFormative = hasFormative ? (effectivePre + effectiveMidterm + effectivePost) : null;
+
+    // 4. รวมคะแนนทั้งหมด (รวมระหว่างภาค + ปลายภาค c10)
+    const effectiveFinal = updated.c10 ?? updated.final2 ?? 0;
+    const hasTotal = hasFormative || (updated.c10 !== null && updated.c10 !== undefined) || (existing.yearlyTotal !== null && existing.yearlyTotal !== undefined);
+    const totalAll = hasTotal ? ((updated.cSumFormative ?? 0) + effectiveFinal) : null;
+
+    if (totalAll !== null) {
+      updated.yearlyTotal = Math.round(totalAll * 100) / 100;
+      updated.grade = GradingEngine.calculateGrade(updated.yearlyTotal);
+      updated.isPassed = updated.yearlyTotal >= 50;
+    } else {
+      updated.yearlyTotal = null;
+      updated.grade = '-';
+      updated.isPassed = false;
+    }
+
+    // 5. ซิงค์กับระบบ 2 เทอมเพื่อความเข้ากันได้ 100% กับ ปพ.5 และ ปพ.6
+    updated.formative1 = updated.cSumPre;
+    updated.midterm1 = updated.c5;
+    updated.total1 = (updated.cSumPre !== null || updated.c5 !== null) ? (effectivePre + effectiveMidterm) : null;
+    updated.formative2 = updated.cSumPost;
+    updated.final2 = updated.c10;
+    updated.total2 = (updated.cSumPost !== null || updated.c10 !== null) ? (effectivePost + effectiveFinal) : null;
+
+    onUpdateScore(selectedSubjectId, studentId, updated);
+  };
+
+  const handleImportSchoolMIS = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedSubject) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (!content) return;
+
+      const res = importSchoolMIS_SingleSubjectCSV(content, currentSubjectScores);
+      if (res.success && res.updatedScores) {
+        Object.entries(res.updatedScores).forEach(([sId, record]) => {
+          onUpdateScore(selectedSubjectId, sId, record);
+        });
+        setImportStatus(`✅ ${res.message} เรียบร้อยแล้ว`);
+        setTimeout(() => setImportStatus(null), 4000);
+      } else {
+        alert(res.message);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
   };
 
   const getGradeBadgeColor = (grade: string) => {
@@ -349,214 +468,672 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
 
       {/* Interactive Marksheet Grid */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 text-slate-600">
-            <span className="font-bold text-slate-700">รายชื่อนักเรียนและตารางบันทึกคะแนน</span>
-            <span className="text-slate-400 hidden sm:inline">• ลำดับเลขที่ตามมาตรฐาน SchoolMIS</span>
+        {/* Header Bar: School MIS Badge & Controls */}
+        <div className="bg-[#f8f9fa] px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="font-bold text-slate-800 text-sm">บันทึกคะแนนรายวิชา</span>
+            {selectedSubject && (
+              <span className="px-3 py-1 bg-[#689f38] text-white text-xs font-bold rounded shadow-xs">
+                {selectedSubject.code.replace(/\s+/g, '')} {selectedSubject.name} ชั้น {config.classLevel} ห้อง {config.room} จำนวน {students.length} คน ลงทะเบียนแล้ว {students.length} คน ({config.academicYear}/{config.semester})
+              </span>
+            )}
+            {importStatus && (
+              <span className="text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-2.5 py-0.5 rounded-full font-semibold animate-pulse">
+                {importStatus}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-emerald-700 font-semibold bg-emerald-100/70 px-2.5 py-0.5 rounded-full border border-emerald-300">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>บันทึกอัตโนมัติทันที (Auto-saved)</span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View Mode Switcher */}
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setViewMode('schoolmis')}
+                className={`px-2.5 py-1 rounded-md font-bold transition ${
+                  viewMode === 'schoolmis'
+                    ? 'bg-white text-emerald-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📋 แบบ School MIS (10 ครั้ง)
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('semester')}
+                className={`px-2.5 py-1 rounded-md font-bold transition ${
+                  viewMode === 'semester'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📑 แบบ 2 ภาคเรียน (เทอม 1/2)
+              </button>
+            </div>
+
+            {/* ปุ่มนำเข้าไฟล์ CSV จาก School MIS */}
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition" title="นำเข้าคะแนนจากไฟล์ CSV ที่ดาวน์โหลดจากระบบ School MIS">
+              <Upload className="w-3.5 h-3.5 text-blue-200" />
+              <span>นำเข้า SchoolMIS (.csv)</span>
+              <input
+                type="file"
+                accept=".csv"
+                disabled={!canEdit}
+                onChange={handleImportSchoolMIS}
+                className="hidden"
+              />
+            </label>
+
+            {/* ปุ่มส่งออกไฟล์ CSV นำเข้า School MIS */}
+            <button
+              onClick={() => {
+                if (selectedSubject) {
+                  exportSchoolMIS_SingleSubjectCSV(
+                    students,
+                    selectedSubject,
+                    currentSubjectScores,
+                    config
+                  );
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#689f38] hover:bg-[#558b2f] text-white text-xs font-bold rounded-lg shadow-xs transition"
+              title="ดาวน์โหลดไฟล์ CSV เพื่อนำเข้าคะแนนรายวิชานี้สู่ระบบ SchoolMIS ของ สพฐ."
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-100" />
+              <span>ส่งออก SchoolMIS (.csv)</span>
+            </button>
+
+            {/* Auto-saved badge */}
+            <div className="flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Auto-saved</span>
+            </div>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200 uppercase text-xs">
-              <tr>
-                <th rowSpan={2} className="px-3 py-2.5 text-center w-12 border-r border-slate-200">เลขที่</th>
-                <th rowSpan={2} className="px-3 py-2.5 text-center w-20 border-r border-slate-200">รหัส</th>
-                <th rowSpan={2} className="px-4 py-2.5 border-r border-slate-200 min-w-[180px]">ชื่อ - นามสกุล</th>
-                
-                {/* ภาคเรียนที่ 1 */}
-                <th colSpan={4} className="px-3 py-1.5 text-center bg-blue-50/60 border-r border-slate-200 text-blue-900 font-bold">
-                  ภาคเรียนที่ 1 (เต็ม 50)
-                </th>
 
-                {/* ภาคเรียนที่ 2 */}
-                <th colSpan={4} className="px-3 py-1.5 text-center bg-indigo-50/60 border-r border-slate-200 text-indigo-900 font-bold">
-                  ภาคเรียนที่ 2 (เต็ม 50)
-                </th>
+        {viewMode === 'schoolmis' ? (
+          /* School MIS 10-Assessments Grid (ตรงตามสกรีนช็อต 100%) */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-[#f8f9fa] text-slate-700 font-semibold border-b border-slate-300">
+                {/* Header Row 1: Section Groups */}
+                <tr>
+                  <th rowSpan={2} className="px-2 py-2 text-center w-10 border border-slate-300 font-bold bg-[#f8f9fa]">No.</th>
+                  <th rowSpan={2} className="px-2 py-2 text-center w-14 border border-slate-300 font-bold bg-[#f8f9fa]">รหัส</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left min-w-[90px] border border-slate-300 font-bold bg-[#f8f9fa]">ชื่อ</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left min-w-[90px] border border-slate-300 font-bold bg-[#f8f9fa]">นามสกุล</th>
+                  <th colSpan={5} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    คะแนนก่อนกลางภาค(ปี)
+                  </th>
+                  <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    คะแนนกลางภาค(ปี)
+                  </th>
+                  <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    แก้ตัวกลางภาค(ปี)
+                  </th>
+                  <th colSpan={5} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    คะแนนหลังกลางภาค(ปี)
+                  </th>
+                  <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    รวมระหว่างภาค(ปี)
+                  </th>
+                  <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    คะแนนปลายภาค(ปี)
+                  </th>
+                  <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
+                    รวมคะแนนทั้งหมด
+                  </th>
+                  <th rowSpan={2} className="px-2 py-2 text-center w-12 font-bold border border-slate-300 bg-[#f8f9fa]">
+                    GPA
+                  </th>
+                </tr>
 
-                {/* รวมทั้งปี & เกรด */}
-                <th rowSpan={2} className="px-3 py-2.5 text-center w-20 bg-amber-50/80 text-amber-900 font-bold border-r border-slate-200">
-                  รวม (100)
-                </th>
-                <th rowSpan={2} className="px-3 py-2.5 text-center w-20 bg-emerald-50/80 text-emerald-900 font-bold border-r border-slate-200">
-                  ระดับผลการเรียน
-                </th>
-                <th rowSpan={2} className="px-3 py-2.5 text-center w-20">
-                  ผลการตัดสิน
-                </th>
-              </tr>
-              <tr>
-                {/* Term 1 Subheaders */}
-                <th className="px-2 py-1.5 text-center w-16 bg-blue-50/40 text-blue-800 text-[11px] font-medium border-r border-slate-200">เก็บ (30)</th>
-                <th className="px-2 py-1.5 text-center w-16 bg-blue-50/40 text-blue-800 text-[11px] font-medium border-r border-slate-200">กลาง (10)</th>
-                <th className="px-2 py-1.5 text-center w-16 bg-blue-50/40 text-blue-800 text-[11px] font-medium border-r border-slate-200">ปลาย (10)</th>
-                <th className="px-2 py-1.5 text-center w-16 bg-blue-100/70 text-blue-900 text-[11px] font-bold border-r border-slate-200">รวม 1</th>
+                {/* Header Row 2: Assessment Names */}
+                <tr>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 1</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 2</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 3</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 4</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">รวม</th>
+                  
+                  <th className="px-1 py-1 text-center w-12 border border-slate-300 font-normal">ครั้งที่ 5</th>
+                  <th className="px-1 py-1 text-center w-12 border border-slate-300 font-normal"></th>
 
-                {/* Term 2 Subheaders */}
-                <th className="px-2 py-1.5 text-center w-16 bg-indigo-50/40 text-indigo-800 text-[11px] font-medium border-r border-slate-200">เก็บ (30)</th>
-                <th className="px-2 py-1.5 text-center w-16 bg-indigo-50/40 text-indigo-800 text-[11px] font-medium border-r border-slate-200">กลาง (10)</th>
-                <th className="px-2 py-1.5 text-center w-16 bg-indigo-50/40 text-indigo-800 text-[11px] font-medium border-r border-slate-200">ปลาย (10)</th>
-                <th className="px-2 py-1.5 text-center w-16 bg-indigo-100/70 text-indigo-900 text-[11px] font-bold border-r border-slate-200">รวม 2</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-mono text-xs">
-              {students.map((s) => {
-                const rec = currentSubjectScores[s.studentId] || {
-                  studentId: s.studentId,
-                  formative1: null, midterm1: null, final1: null, total1: null,
-                  formative2: null, midterm2: null, final2: null, total2: null,
-                  yearlyTotal: null, grade: '-', isPassed: false
-                };
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 6</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 7</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 8</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">ครั้งที่ 9</th>
+                  <th className="px-1 py-1 text-center w-11 border border-slate-300 font-normal">รวม</th>
 
-                return (
-                  <tr key={s.id} className="hover:bg-slate-50 transition">
-                    <td className="px-3 py-2 text-center font-bold text-slate-800 border-r border-slate-200 font-sans">{s.seq}</td>
-                    <td className="px-3 py-2 text-center text-slate-500 border-r border-slate-200">{s.studentId}</td>
-                    <td className="px-4 py-2 font-medium text-slate-900 border-r border-slate-200 font-sans truncate">
-                      {s.prefix}{s.firstName} {s.lastName}
-                    </td>
+                  <th className="px-1 py-1 text-center w-12 border border-slate-300 font-normal"></th>
+                  <th className="px-1 py-1 text-center w-12 border border-slate-300 font-normal">ครั้งที่ 10</th>
+                  <th className="px-1 py-1 text-center w-12 border border-slate-300 font-normal"></th>
+                </tr>
 
-                    {/* Term 1 Inputs */}
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min={0}
-                        max={30}
-                        placeholder="-"
-                        disabled={!canEdit}
-                        readOnly={!canEdit}
-                        value={rec.formative1 ?? ''}
-                        onChange={(e) => handleScoreChange(s.studentId, 'formative1', e.target.value)}
-                        className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                          canEdit
-                            ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
-                            : 'cursor-not-allowed opacity-75'
-                        }`}
-                      />
-                    </td>
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min={0}
-                        max={10}
-                        placeholder="-"
-                        disabled={!canEdit}
-                        readOnly={!canEdit}
-                        value={rec.midterm1 ?? ''}
-                        onChange={(e) => handleScoreChange(s.studentId, 'midterm1', e.target.value)}
-                        className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                          canEdit
-                            ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
-                            : 'cursor-not-allowed opacity-75'
-                        }`}
-                      />
-                    </td>
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min={0}
-                        max={10}
-                        placeholder="-"
-                        disabled={!canEdit}
-                        readOnly={!canEdit}
-                        value={rec.final1 ?? ''}
-                        onChange={(e) => handleScoreChange(s.studentId, 'final1', e.target.value)}
-                        className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                          canEdit
-                            ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
-                            : 'cursor-not-allowed opacity-75'
-                        }`}
-                      />
-                    </td>
-                    <td className="px-2 py-2 text-center font-bold bg-blue-50/30 text-blue-900 border-r border-slate-200">
-                      {rec.total1 ?? '-'}
-                    </td>
+                {/* Header Row 3: Weight / Full Scores Row (ตรงตามสกรีนช็อต 100%) */}
+                <tr className="bg-[#f2f4f7] text-slate-800 text-center">
+                  <td className="border border-slate-300"></td>
+                  <td className="border border-slate-300"></td>
+                  <td className="border border-slate-300"></td>
+                  <td className="border border-slate-300"></td>
+                  
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c1}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c2}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c3}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c4}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.cSumPre}
+                    </div>
+                  </td>
 
-                    {/* Term 2 Inputs */}
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min={0}
-                        max={30}
-                        placeholder="-"
-                        disabled={!canEdit}
-                        readOnly={!canEdit}
-                        value={rec.formative2 ?? ''}
-                        onChange={(e) => handleScoreChange(s.studentId, 'formative2', e.target.value)}
-                        className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                          canEdit
-                            ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
-                            : 'cursor-not-allowed opacity-75'
-                        }`}
-                      />
-                    </td>
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min={0}
-                        max={10}
-                        placeholder="-"
-                        disabled={!canEdit}
-                        readOnly={!canEdit}
-                        value={rec.midterm2 ?? ''}
-                        onChange={(e) => handleScoreChange(s.studentId, 'midterm2', e.target.value)}
-                        className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                          canEdit
-                            ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
-                            : 'cursor-not-allowed opacity-75'
-                        }`}
-                      />
-                    </td>
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min={0}
-                        max={10}
-                        placeholder="-"
-                        disabled={!canEdit}
-                        readOnly={!canEdit}
-                        value={rec.final2 ?? ''}
-                        onChange={(e) => handleScoreChange(s.studentId, 'final2', e.target.value)}
-                        className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                          canEdit
-                            ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
-                            : 'cursor-not-allowed opacity-75'
-                        }`}
-                      />
-                    </td>
-                    <td className="px-2 py-2 text-center font-bold bg-indigo-50/30 text-indigo-900 border-r border-slate-200">
-                      {rec.total2 ?? '-'}
-                    </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c5}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full py-0.5 bg-white border border-slate-300 rounded text-center text-slate-400 min-h-[22px]"></div>
+                  </td>
 
-                    {/* Yearly Total & Grade */}
-                    <td className="px-2 py-2 text-center font-bold bg-amber-50/30 text-amber-900 border-r border-slate-200">
-                      {rec.yearlyTotal ?? '-'}
-                    </td>
-                    <td className="px-2 py-2 text-center border-r border-slate-200">
-                      <span className={`inline-block w-8 py-0.5 rounded text-center text-xs border ${getGradeBadgeColor(rec.grade)}`}>
-                        {rec.grade}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-center font-sans text-xs">
-                      {rec.grade !== '-' ? (
-                        rec.isPassed ? (
-                          <span className="text-emerald-600 font-semibold">ผ่าน</span>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c6}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c7}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c8}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c9}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.cSumPost}
+                    </div>
+                  </td>
+
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.cSumFormative}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.c10}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full text-center bg-white border border-slate-300 rounded py-0.5 text-xs font-mono text-slate-700">
+                      {fullScores.total}
+                    </div>
+                  </td>
+                  <td className="p-1 border border-slate-300">
+                    <div className="w-full py-0.5 text-center text-slate-800 font-bold">{fullScores.gpa}</div>
+                  </td>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-200 font-sans text-xs bg-white">
+                {sortStudentsForSchoolMIS(students).map((s, idx) => {
+                  const rec = currentSubjectScores[s.studentId] || {
+                    studentId: s.studentId,
+                    formative1: null, midterm1: null, final1: null, total1: null,
+                    formative2: null, midterm2: null, final2: null, total2: null,
+                    yearlyTotal: null, grade: '-', isPassed: false
+                  };
+                  const cleanFirstName = extractCleanFirstName(s.prefix, s.firstName);
+
+                  // Sum pre (c1..c4)
+                  const hasExplicitPre = (rec.c1 !== null && rec.c1 !== undefined) ||
+                                         (rec.c2 !== null && rec.c2 !== undefined) ||
+                                         (rec.c3 !== null && rec.c3 !== undefined) ||
+                                         (rec.c4 !== null && rec.c4 !== undefined);
+                  const sumPre = rec.cSumPre !== undefined && rec.cSumPre !== null
+                    ? rec.cSumPre
+                    : (hasExplicitPre
+                        ? ((rec.c1 ?? 0) + (rec.c2 ?? 0) + (rec.c3 ?? 0) + (rec.c4 ?? 0))
+                        : (rec.formative1 ?? 0));
+
+                  // Midterm c5
+                  const c5 = rec.c5 ?? rec.midterm1 ?? 0;
+
+                  // Sum post (c6..c9)
+                  const hasExplicitPost = (rec.c6 !== null && rec.c6 !== undefined) ||
+                                          (rec.c7 !== null && rec.c7 !== undefined) ||
+                                          (rec.c8 !== null && rec.c8 !== undefined) ||
+                                          (rec.c9 !== null && rec.c9 !== undefined);
+                  const sumPost = rec.cSumPost !== undefined && rec.cSumPost !== null
+                    ? rec.cSumPost
+                    : (hasExplicitPost
+                        ? ((rec.c6 ?? 0) + (rec.c7 ?? 0) + (rec.c8 ?? 0) + (rec.c9 ?? 0))
+                        : (rec.formative2 ?? 0));
+
+                  // Sum formative (pre + c5 + post)
+                  const sumFormative = rec.cSumFormative !== undefined && rec.cSumFormative !== null
+                    ? rec.cSumFormative
+                    : (sumPre + c5 + sumPost);
+
+                  // Final c10
+                  const c10 = rec.c10 ?? rec.final2 ?? 0;
+
+                  // Total All
+                  const totalAll = rec.yearlyTotal !== null && rec.yearlyTotal !== undefined
+                    ? rec.yearlyTotal
+                    : (sumFormative + c10);
+
+                  // GPA
+                  const gpa = rec.grade && rec.grade !== '-' ? rec.grade : (totalAll > 0 ? GradingEngine.calculateGrade(totalAll) : '');
+
+                  return (
+                    <tr key={s.id} className="hover:bg-slate-50 transition border-b border-slate-200">
+                      <td className="px-2 py-1 text-center text-slate-700 border border-slate-300 font-sans">{idx + 1}.</td>
+                      <td className="px-2 py-1 text-center font-mono text-slate-600 border border-slate-300">{s.studentId}</td>
+                      <td className="px-3 py-1 font-medium text-slate-900 border border-slate-300">{cleanFirstName}</td>
+                      <td className="px-3 py-1 font-medium text-slate-900 border border-slate-300">{s.lastName}</td>
+
+                      {/* c1 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          disabled={!canEdit}
+                          value={rec.c1 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c1', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* c2 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          disabled={!canEdit}
+                          value={rec.c2 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c2', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* c3 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          disabled={!canEdit}
+                          value={rec.c3 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c3', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* c4 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={5}
+                          disabled={!canEdit}
+                          value={rec.c4 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c4', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* รวมก่อนกลาง */}
+                      <td className="p-1 border border-slate-300 text-center">
+                        <div className={`py-1 px-1 rounded border border-slate-300 bg-white font-mono ${sumPre === 0 ? 'text-red-600' : 'text-slate-800 font-bold'}`}>
+                          {sumPre}
+                        </div>
+                      </td>
+
+                      {/* c5 กลางภาค */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={15}
+                          disabled={!canEdit}
+                          value={rec.c5 ?? rec.midterm1 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c5', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* แก้ตัวกลางภาค */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={15}
+                          disabled={!canEdit}
+                          value={rec.cRetakeMidterm ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'cRetakeMidterm', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+
+                      {/* c6 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          disabled={!canEdit}
+                          value={rec.c6 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c6', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* c7 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          disabled={!canEdit}
+                          value={rec.c7 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c7', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* c8 */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={15}
+                          disabled={!canEdit}
+                          value={rec.c8 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c8', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      {/* c9 */}
+                      <td className="p-1 border border-slate-300">
+                        <div className="w-full py-1 bg-white border border-slate-300 rounded text-center text-slate-400 min-h-[26px]"></div>
+                      </td>
+                      {/* รวมหลังกลาง */}
+                      <td className="p-1 border border-slate-300 text-center">
+                        <div className={`py-1 px-1 rounded border border-slate-300 bg-white font-mono ${sumPost === 0 ? 'text-red-600' : 'text-slate-800 font-bold'}`}>
+                          {sumPost}
+                        </div>
+                      </td>
+
+                      {/* รวมระหว่างภาค */}
+                      <td className="p-1 border border-slate-300 text-center">
+                        <div className={`py-1 px-1 rounded border border-slate-300 bg-white font-mono ${sumFormative === 0 ? 'text-red-600' : 'text-slate-800 font-bold'}`}>
+                          {sumFormative}
+                        </div>
+                      </td>
+
+                      {/* c10 ปลายภาค */}
+                      <td className="p-1 border border-slate-300">
+                        <input
+                          type="number"
+                          min={0}
+                          max={15}
+                          disabled={!canEdit}
+                          value={rec.c10 ?? rec.final2 ?? ''}
+                          placeholder="0"
+                          onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c10', e.target.value)}
+                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+
+                      {/* รวมคะแนนทั้งหมด */}
+                      <td className="p-1 border border-slate-300 text-center">
+                        <div className={`py-1 px-1 rounded border border-slate-300 bg-white font-mono ${totalAll === 0 ? 'text-red-600' : 'text-slate-800 font-bold'}`}>
+                          {totalAll}
+                        </div>
+                      </td>
+
+                      {/* GPA */}
+                      <td className="p-1 border border-slate-300 text-center">
+                        <div className="w-full py-1 bg-white border border-slate-300 rounded text-center text-slate-800 font-mono font-bold">
+                          {gpa || ''}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* Semester View Table */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200 uppercase text-xs">
+                <tr>
+                  <th rowSpan={2} className="px-3 py-2.5 text-center w-12 border-r border-slate-200">เลขที่</th>
+                  <th rowSpan={2} className="px-3 py-2.5 text-center w-20 border-r border-slate-200">รหัส</th>
+                  <th rowSpan={2} className="px-4 py-2.5 border-r border-slate-200 min-w-[180px]">ชื่อ - นามสกุล</th>
+                  
+                  {/* ภาคเรียนที่ 1 */}
+                  <th colSpan={4} className="px-3 py-1.5 text-center bg-blue-50/60 border-r border-slate-200 text-blue-900 font-bold">
+                    ภาคเรียนที่ 1 (เต็ม 50)
+                  </th>
+
+                  {/* ภาคเรียนที่ 2 */}
+                  <th colSpan={4} className="px-3 py-1.5 text-center bg-indigo-50/60 border-r border-slate-200 text-indigo-900 font-bold">
+                    ภาคเรียนที่ 2 (เต็ม 50)
+                  </th>
+
+                  {/* รวมทั้งปี & เกรด */}
+                  <th rowSpan={2} className="px-3 py-2.5 text-center w-20 bg-amber-50/80 text-amber-900 font-bold border-r border-slate-200">
+                    รวม (100)
+                  </th>
+                  <th rowSpan={2} className="px-3 py-2.5 text-center w-20 bg-emerald-50/80 text-emerald-900 font-bold border-r border-slate-200">
+                    ระดับผลการเรียน
+                  </th>
+                  <th rowSpan={2} className="px-3 py-2.5 text-center w-20">
+                    ผลการตัดสิน
+                  </th>
+                </tr>
+                <tr>
+                  {/* Term 1 Subheaders */}
+                  <th className="px-2 py-1.5 text-center w-16 bg-blue-50/40 text-blue-800 text-[11px] font-medium border-r border-slate-200">เก็บ (30)</th>
+                  <th className="px-2 py-1.5 text-center w-16 bg-blue-50/40 text-blue-800 text-[11px] font-medium border-r border-slate-200">กลาง (10)</th>
+                  <th className="px-2 py-1.5 text-center w-16 bg-blue-50/40 text-blue-800 text-[11px] font-medium border-r border-slate-200">ปลาย (10)</th>
+                  <th className="px-2 py-1.5 text-center w-16 bg-blue-100/70 text-blue-900 text-[11px] font-bold border-r border-slate-200">รวม 1</th>
+
+                  {/* Term 2 Subheaders */}
+                  <th className="px-2 py-1.5 text-center w-16 bg-indigo-50/40 text-indigo-800 text-[11px] font-medium border-r border-slate-200">เก็บ (30)</th>
+                  <th className="px-2 py-1.5 text-center w-16 bg-indigo-50/40 text-indigo-800 text-[11px] font-medium border-r border-slate-200">กลาง (10)</th>
+                  <th className="px-2 py-1.5 text-center w-16 bg-indigo-50/40 text-indigo-800 text-[11px] font-medium border-r border-slate-200">ปลาย (10)</th>
+                  <th className="px-2 py-1.5 text-center w-16 bg-indigo-100/70 text-indigo-900 text-[11px] font-bold border-r border-slate-200">รวม 2</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono text-xs">
+                {students.map((s) => {
+                  const rec = currentSubjectScores[s.studentId] || {
+                    studentId: s.studentId,
+                    formative1: null, midterm1: null, final1: null, total1: null,
+                    formative2: null, midterm2: null, final2: null, total2: null,
+                    yearlyTotal: null, grade: '-', isPassed: false
+                  };
+
+                  return (
+                    <tr key={s.id} className="hover:bg-slate-50 transition">
+                      <td className="px-3 py-2 text-center font-bold text-slate-800 border-r border-slate-200 font-sans">{s.seq}</td>
+                      <td className="px-3 py-2 text-center text-slate-500 border-r border-slate-200">{s.studentId}</td>
+                      <td className="px-4 py-2 font-medium text-slate-900 border-r border-slate-200 font-sans truncate">
+                        {s.prefix}{s.firstName} {s.lastName}
+                      </td>
+
+                      {/* Term 1 Inputs */}
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min={0}
+                          max={30}
+                          placeholder="-"
+                          disabled={!canEdit}
+                          readOnly={!canEdit}
+                          value={rec.formative1 ?? ''}
+                          onChange={(e) => handleScoreChange(s.studentId, 'formative1', e.target.value)}
+                          className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
+                            canEdit
+                              ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
+                              : 'cursor-not-allowed opacity-75'
+                          }`}
+                        />
+                      </td>
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          placeholder="-"
+                          disabled={!canEdit}
+                          readOnly={!canEdit}
+                          value={rec.midterm1 ?? ''}
+                          onChange={(e) => handleScoreChange(s.studentId, 'midterm1', e.target.value)}
+                          className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
+                            canEdit
+                              ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
+                              : 'cursor-not-allowed opacity-75'
+                          }`}
+                        />
+                      </td>
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          placeholder="-"
+                          disabled={!canEdit}
+                          readOnly={!canEdit}
+                          value={rec.final1 ?? ''}
+                          onChange={(e) => handleScoreChange(s.studentId, 'final1', e.target.value)}
+                          className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
+                            canEdit
+                              ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
+                              : 'cursor-not-allowed opacity-75'
+                          }`}
+                        />
+                      </td>
+                      <td className="px-2 py-2 text-center font-bold bg-blue-50/30 text-blue-900 border-r border-slate-200">
+                        {rec.total1 ?? '-'}
+                      </td>
+
+                      {/* Term 2 Inputs */}
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min={0}
+                          max={30}
+                          placeholder="-"
+                          disabled={!canEdit}
+                          readOnly={!canEdit}
+                          value={rec.formative2 ?? ''}
+                          onChange={(e) => handleScoreChange(s.studentId, 'formative2', e.target.value)}
+                          className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
+                            canEdit
+                              ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
+                              : 'cursor-not-allowed opacity-75'
+                          }`}
+                        />
+                      </td>
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          placeholder="-"
+                          disabled={!canEdit}
+                          readOnly={!canEdit}
+                          value={rec.midterm2 ?? ''}
+                          onChange={(e) => handleScoreChange(s.studentId, 'midterm2', e.target.value)}
+                          className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
+                            canEdit
+                              ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
+                              : 'cursor-not-allowed opacity-75'
+                          }`}
+                        />
+                      </td>
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          placeholder="-"
+                          disabled={!canEdit}
+                          readOnly={!canEdit}
+                          value={rec.final2 ?? ''}
+                          onChange={(e) => handleScoreChange(s.studentId, 'final2', e.target.value)}
+                          className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
+                            canEdit
+                              ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
+                              : 'cursor-not-allowed opacity-75'
+                          }`}
+                        />
+                      </td>
+                      <td className="px-2 py-2 text-center font-bold bg-indigo-50/30 text-indigo-900 border-r border-slate-200">
+                        {rec.total2 ?? '-'}
+                      </td>
+
+                      {/* Yearly Total & Grade */}
+                      <td className="px-2 py-2 text-center font-bold bg-amber-50/30 text-amber-900 border-r border-slate-200">
+                        {rec.yearlyTotal ?? '-'}
+                      </td>
+                      <td className="px-2 py-2 text-center border-r border-slate-200">
+                        <span className={`inline-block w-8 py-0.5 rounded text-center text-xs border ${getGradeBadgeColor(rec.grade)}`}>
+                          {rec.grade}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-center font-sans text-xs">
+                        {rec.grade !== '-' ? (
+                          rec.isPassed ? (
+                            <span className="text-emerald-600 font-semibold">ผ่าน</span>
+                          ) : (
+                            <span className="text-rose-600 font-semibold">ไม่ผ่าน</span>
+                          )
                         ) : (
-                          <span className="text-rose-600 font-semibold">ไม่ผ่าน</span>
-                        )
-                      ) : (
-                        <span className="text-slate-300">-</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Add Subject Modal */}
