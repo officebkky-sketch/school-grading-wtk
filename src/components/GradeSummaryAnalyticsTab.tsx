@@ -24,6 +24,11 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
   // วิธีการจัดลำดับกรณีคะแนนเท่ากัน
   const [rankingMethod, setRankingMethod] = useState<'gpa_rawscore_tiebreaker' | 'gpa_standard'>('gpa_rawscore_tiebreaker');
 
+  const basicSubjects = useMemo(() => subjects.filter(s => s.type === 'พื้นฐาน' || !s.type), [subjects]);
+  const additionalSubjects = useMemo(() => subjects.filter(s => s.type === 'เพิ่มเติม'), [subjects]);
+  const activitySubjects = useMemo(() => subjects.filter(s => s.type === 'กิจกรรม'), [subjects]);
+  const sortedSubjects = useMemo(() => [...basicSubjects, ...additionalSubjects, ...activitySubjects], [basicSubjects, additionalSubjects, activitySubjects]);
+
   // Calculate GPA & Total Raw Score for each student
   const studentGPAs = useMemo(() => {
     return students.map(s => {
@@ -32,7 +37,7 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
       let totalRawScore = 0;
       let hasAnyRawScore = false;
 
-      subjects.forEach(sub => {
+      sortedSubjects.forEach(sub => {
         const rec = scores[sub.id]?.[s.studentId];
         const gr = rec?.grade && rec.grade !== '-' ? rec.grade : '-';
         subjectGrades[sub.id] = gr;
@@ -55,7 +60,7 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
         totalRawScore: hasAnyRawScore ? totalRawScore : null
       };
     });
-  }, [students, subjects, scores]);
+  }, [students, sortedSubjects, scores]);
 
   // คำนวณอันดับที่ (Ranking) รองรับทั้งแบบตัดเชือกด้วยคะแนนดิบ และแบบอันดับร่วม สพฐ.
   const rankingMap = useMemo(() => {
@@ -88,83 +93,73 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
               สรุปผลสัมฤทธิ์ทางการเรียนและเกรดเฉลี่ย (GPA) ชั้น {classLevel}
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              สรุปผลการเรียนทุกรายวิชาพื้นฐาน พร้อมคำนวณผลการเรียนเฉลี่ยสะสม (GPA) ตามระเบียบการวัดและประเมินผล สพฐ.
+              สรุปผลการเรียนจำแนกตามรายวิชาพื้นฐานและรายวิชาเพิ่มเติม พร้อมคำนวณผลการเรียนเฉลี่ยสะสม (GPA) ตามระเบียบการวัดและประเมินผล สพฐ.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
-                subjects.forEach((sub, idx) => {
+                sortedSubjects.forEach((sub, idx) => {
                   setTimeout(() => {
                     exportSchoolMIS_SingleSubjectCSV(students, sub, scores[sub.id] || {}, config);
-                  }, idx * 250);
+                  }, idx * 100);
                 });
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow-sm transition shrink-0"
-              title="ดาวน์โหลดไฟล์ CSV นำเข้า SchoolMIS ของทุกรายวิชาในชั้นนี้"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+              title="ส่งออกไฟล์ CSV สำหรับนำเข้า SchoolMIS ทีละรายวิชา"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
-              ชุดไฟล์นำเข้า SchoolMIS (.csv ทุกวิชา)
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>ส่งออก SchoolMIS CSV</span>
             </button>
 
             <button
-              onClick={() => exportToSchoolMISExcel(students, subjects, scores, config)}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition shrink-0"
-              title="ดาวน์โหลดไฟล์ .xlsx รวมทุกวิชาตามรูปแบบ SchoolMIS"
+              onClick={() => exportToSchoolMISExcel(students, sortedSubjects, scores, config)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition"
             >
-              <FileSpreadsheet className="w-4 h-4 text-indigo-200" />
-              สรุปผลรวม SchoolMIS (.xlsx)
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>ส่งออก Excel รวมชั้น</span>
             </button>
           </div>
         </div>
 
-        {/* GPA Summary Cards */}
-        <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="bg-indigo-50 rounded-lg p-3.5 border border-indigo-200 flex items-center justify-between">
-            <div>
-              <div className="text-xs text-indigo-700 font-medium">เกรดเฉลี่ยรวมทั้งห้อง</div>
-              <div className="text-2xl font-bold text-indigo-900 mt-0.5">{avgGPA.toFixed(2)}</div>
-            </div>
-            <TrendingUp className="w-6 h-6 text-indigo-600" />
+        {/* Analytics Highlights */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-100 text-center">
+          <div className="bg-indigo-50/60 p-3 rounded-lg border border-indigo-100">
+            <div className="text-xs text-indigo-700 font-medium">เกรดเฉลี่ยรวมทั้งห้อง</div>
+            <div className="text-2xl font-black text-indigo-900 mt-0.5">{avgGPA.toFixed(2)}</div>
           </div>
-
-          <div className="bg-emerald-50 rounded-lg p-3.5 border border-emerald-200 flex items-center justify-between">
-            <div>
-              <div className="text-xs text-emerald-700 font-medium">GPA สูงสุด</div>
-              <div className="text-2xl font-bold text-emerald-900 mt-0.5">{maxGPA.toFixed(2)}</div>
-            </div>
-            <Trophy className="w-6 h-6 text-emerald-600" />
+          <div className="bg-emerald-50/60 p-3 rounded-lg border border-emerald-100">
+            <div className="text-xs text-emerald-700 font-medium">GPA สูงสุด</div>
+            <div className="text-2xl font-black text-emerald-900 mt-0.5">{maxGPA.toFixed(2)}</div>
           </div>
-
-          <div className="bg-amber-50 rounded-lg p-3.5 border border-amber-200 flex items-center justify-between">
-            <div>
-              <div className="text-xs text-amber-700 font-medium">GPA ต่ำสุด</div>
-              <div className="text-2xl font-bold text-amber-900 mt-0.5">{minGPA.toFixed(2)}</div>
-            </div>
-            <Percent className="w-6 h-6 text-amber-600" />
+          <div className="bg-amber-50/60 p-3 rounded-lg border border-amber-100">
+            <div className="text-xs text-amber-700 font-medium">GPA ต่ำสุด</div>
+            <div className="text-2xl font-black text-amber-900 mt-0.5">{minGPA.toFixed(2)}</div>
           </div>
-
-          <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 flex items-center justify-between">
-            <div>
-              <div className="text-xs text-slate-500 font-medium">จำนวนรายวิชา</div>
-              <div className="text-2xl font-bold text-slate-800 mt-0.5">{subjects.length} วิชา</div>
-            </div>
-            <BarChart3 className="w-6 h-6 text-slate-400" />
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div className="text-xs text-slate-600 font-medium">นักเรียนทั้งหมด</div>
+            <div className="text-2xl font-black text-slate-800 mt-0.5">{students.length} คน</div>
           </div>
         </div>
       </div>
 
-      {/* Master Grade Sheet Grid */}
+      {/* Main Matrix Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        {/* Table Toolbar: Ranking Method Selector & Explanation */}
-        <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50/50">
           <div className="flex items-center gap-2">
-            <Medal className="w-4 h-4 text-amber-600" />
-            <span className="font-bold text-slate-700">เกณฑ์การจัดลำดับที่ (กรณีคะแนนเท่ากัน):</span>
+            <BarChart3 className="w-4 h-4 text-slate-500" />
+            <h3 className="font-bold text-slate-800 text-sm">
+              ตารางสรุปเกรดและคะแนนรายบุคคล ({students.length} คน • พื้นฐาน {basicSubjects.length} วิชา • เพิ่มเติม {additionalSubjects.length} วิชา)
+            </h3>
           </div>
 
-          <div className="flex items-center gap-4">
+          {/* Ranking Rule Selector */}
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-slate-500 flex items-center gap-1">
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+              เกณฑ์จัดลำดับที่:
+            </span>
             <label className="inline-flex items-center gap-1.5 cursor-pointer font-medium text-slate-700">
               <input
                 type="radio"
@@ -174,9 +169,8 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
                 onChange={() => setRankingMethod('gpa_rawscore_tiebreaker')}
                 className="text-emerald-600 focus:ring-emerald-500"
               />
-              <span>ตัดเชือกด้วยคะแนนรวมดิบ (เมื่อ GPA เท่ากัน)</span>
+              <span>คะแนนดิบตัดสิน (ไม่มีที่ซ้ำ)</span>
             </label>
-
             <label className="inline-flex items-center gap-1.5 cursor-pointer font-medium text-slate-700">
               <input
                 type="radio"
@@ -194,28 +188,46 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600">
             <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200 uppercase text-xs">
+              {/* Row 1: Group Category Headers */}
               <tr>
-                <th className="px-3 py-3 text-center w-12 border-r border-slate-200">เลขที่</th>
-                <th className="px-3 py-3 text-center w-20 border-r border-slate-200">รหัส</th>
-                <th className="px-4 py-3 border-r border-slate-200 min-w-[170px]">ชื่อ - นามสกุล</th>
+                <th rowSpan={2} className="px-3 py-2 text-center w-12 border-r border-slate-200">เลขที่</th>
+                <th rowSpan={2} className="px-3 py-2 text-center w-20 border-r border-slate-200">รหัส</th>
+                <th rowSpan={2} className="px-4 py-2 border-r border-slate-200 min-w-[170px]">ชื่อ - นามสกุล</th>
                 
-                {/* Subjects Header */}
-                {subjects.map(sub => (
-                  <th key={sub.id} className="px-2 py-3 text-center border-r border-slate-200 min-w-[85px]">
+                {basicSubjects.length > 0 && (
+                  <th colSpan={basicSubjects.length} className="py-1 px-2 text-center border-r border-slate-200 bg-emerald-50 text-emerald-900 font-bold text-[11px]">
+                    รายวิชาพื้นฐาน ({basicSubjects.length} วิชา)
+                  </th>
+                )}
+                {additionalSubjects.length > 0 && (
+                  <th colSpan={additionalSubjects.length} className="py-1 px-2 text-center border-r border-slate-200 bg-blue-50 text-blue-900 font-bold text-[11px]">
+                    รายวิชาเพิ่มเติม ({additionalSubjects.length} วิชา)
+                  </th>
+                )}
+                {activitySubjects.length > 0 && (
+                  <th colSpan={activitySubjects.length} className="py-1 px-2 text-center border-r border-slate-200 bg-amber-50 text-amber-900 font-bold text-[11px]">
+                    กิจกรรม ({activitySubjects.length} วิชา)
+                  </th>
+                )}
+
+                <th rowSpan={2} className="px-3 py-2 text-center w-24 border-r border-slate-200 bg-slate-100/70 text-slate-800 font-bold">
+                  คะแนนรวม
+                </th>
+                <th rowSpan={2} className="px-3 py-2 text-center w-24 border-r border-slate-200 bg-indigo-50 text-indigo-950 font-bold">
+                  เกรดเฉลี่ย (GPA)
+                </th>
+                <th rowSpan={2} className="px-3 py-2 text-center w-28 bg-amber-50 text-amber-950 font-bold">
+                  ลำดับที่ (Rank)
+                </th>
+              </tr>
+              {/* Row 2: Individual Subject Headers */}
+              <tr className="bg-slate-50/80">
+                {sortedSubjects.map(sub => (
+                  <th key={sub.id} className="px-2 py-2 text-center border-r border-slate-200 min-w-[85px]">
                     <div className="font-bold text-slate-800 text-[11px] truncate">{sub.name}</div>
                     <div className="text-[10px] text-slate-400 font-normal">{sub.credits} นก.</div>
                   </th>
                 ))}
-
-                <th className="px-3 py-3 text-center w-24 border-r border-slate-200 bg-slate-100/70 text-slate-800 font-bold">
-                  คะแนนรวม
-                </th>
-                <th className="px-3 py-3 text-center w-24 border-r border-slate-200 bg-indigo-50 text-indigo-950 font-bold">
-                  เกรดเฉลี่ย (GPA)
-                </th>
-                <th className="px-3 py-3 text-center w-28 bg-amber-50 text-amber-950 font-bold">
-                  ลำดับที่ (Rank)
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs font-mono">
@@ -230,7 +242,7 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
                     </td>
 
                     {/* Subject Grades */}
-                    {subjects.map(sub => {
+                    {sortedSubjects.map(sub => {
                       const g = subjectGrades[sub.id] || '-';
                       return (
                         <td key={sub.id} className="px-2 py-2.5 text-center border-r border-slate-200">

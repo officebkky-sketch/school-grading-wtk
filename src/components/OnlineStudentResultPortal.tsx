@@ -134,11 +134,11 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
     }
   }, [teacherNameSigMap]);
 
-  const effectiveDirectorName = (syncedDirectorName || directorName || AUTHENTIC_DIRECTOR?.name || 'นางจันทวรรณ พิทักษ์ฉนวน').replace(/\s+/g, ' ').trim();
-  const effectiveDirectorSig = syncedDirectorSig || directorSignatureUrl || 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/director_sig_1779943287141.png';
+  const effectiveDirectorName = (syncedDirectorName || directorName || AUTHENTIC_DIRECTOR?.name || 'นายเอกคณิต สิทธิศักดิ์').replace(/\s+/g, ' ').trim();
+  const effectiveDirectorSig = syncedDirectorSig || directorSignatureUrl || 'https://vzrrpxrmtjpgfbbvhjra.supabase.co/storage/v1/object/public/system/director_sig_1778032124756.png';
 
   const getHomeroomTeacherName = (cls: string) => {
-    return syncedTeacherMap[cls] || classTeacherMap?.[cls] || DEFAULT_CLASS_TEACHER_MAP[cls] || 'นางสุมาวดี สมบูรณ์';
+    return syncedTeacherMap[cls] || classTeacherMap?.[cls] || DEFAULT_CLASS_TEACHER_MAP[cls] || 'นางสาวปภาดา พรหมเศรษฐ์';
   };
 
   const getHomeroomTeacherSignature = (cls: string): string => {
@@ -495,7 +495,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    ประกาศผลการเรียนออนไลน์อย่างเป็นทางการแล้ว โดย <strong>{announcementConfig.announcerRole || 'ผู้อำนวยการโรงเรียน'}</strong> ({announcementConfig.announcerName || 'นางจันทวรรณ พิทักษ์ฉนวน'})
+                    ประกาศผลการเรียนออนไลน์อย่างเป็นทางการแล้ว โดย <strong>{announcementConfig.announcerRole || 'ผู้อำนวยการโรงเรียน'}</strong> ({announcementConfig.announcerName || 'นายเอกคณิต สิทธิศักดิ์'})
                   </span>
                 </div>
               </div>
@@ -717,38 +717,134 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {result.subjectsWithGrades.map(({ subject, scoreRecord }) => {
-                      const total = scoreRecord?.yearlyTotal ?? (scoreRecord?.total1 !== null && scoreRecord?.total1 !== undefined ? scoreRecord.total1 : '-');
-                      const grade = scoreRecord?.grade && scoreRecord.grade !== '-' ? scoreRecord.grade : '-';
-                      const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
+                    {/* 1. รายวิชาพื้นฐาน */}
+                    {result.subjectsWithGrades.filter(i => i.subject.type === 'พื้นฐาน' || !i.subject.type).length > 0 && (
+                      <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px] print-table-row">
+                        <td colSpan={6} className="py-0.5 px-2 border-r border-slate-300">
+                          รายวิชาพื้นฐาน
+                        </td>
+                      </tr>
+                    )}
+                    {result.subjectsWithGrades
+                      .filter(i => i.subject.type === 'พื้นฐาน' || !i.subject.type)
+                      .map(({ subject, scoreRecord }) => {
+                        const total = scoreRecord?.yearlyTotal ?? (scoreRecord?.total1 !== null && scoreRecord?.total1 !== undefined ? scoreRecord.total1 : '-');
+                        const grade = scoreRecord?.grade && scoreRecord.grade !== '-' ? scoreRecord.grade : '-';
+                        const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
 
-                      return (
-                        <tr key={subject.id} className="print-table-row hover:bg-slate-50">
-                          <td className="py-1 px-2 text-center font-mono border-r border-slate-300">{subject.code}</td>
-                          <td className="py-1 px-2 border-r border-slate-300 font-medium">{subject.name}</td>
-                          <td className="py-1 px-2 text-center border-r border-slate-300">{subject.credits}</td>
-                          <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
-                            {total}
-                          </td>
-                          <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs ${
-                              grade === '4' ? 'bg-emerald-100 text-emerald-800' :
-                              grade === '3.5' || grade === '3' ? 'bg-teal-100 text-teal-800' :
-                              grade === '2.5' || grade === '2' ? 'bg-blue-100 text-blue-800' :
-                              grade === '1.5' || grade === '1' ? 'bg-amber-100 text-amber-800' :
-                              grade === '0' ? 'bg-rose-100 text-rose-800' : 'text-slate-500'
-                            }`}>
-                              {grade}
-                            </span>
-                          </td>
-                          <td className="py-1 px-2 text-center font-semibold">
-                            {isPassed === true && <span className="text-emerald-700">ผ่าน</span>}
-                            {isPassed === false && <span className="text-rose-700">ไม่ผ่าน</span>}
-                            {isPassed === null && <span className="text-slate-400">-</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                        return (
+                          <tr key={subject.id} className="print-table-row hover:bg-slate-50">
+                            <td className="py-1 px-2 text-center font-mono border-r border-slate-300">{subject.code}</td>
+                            <td className="py-1 px-2 border-r border-slate-300 font-medium pl-4">{subject.name}</td>
+                            <td className="py-1 px-2 text-center border-r border-slate-300">{subject.credits}</td>
+                            <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                              {total}
+                            </td>
+                            <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                                grade === '4' ? 'bg-emerald-100 text-emerald-800' :
+                                grade === '3.5' || grade === '3' ? 'bg-teal-100 text-teal-800' :
+                                grade === '2.5' || grade === '2' ? 'bg-blue-100 text-blue-800' :
+                                grade === '1.5' || grade === '1' ? 'bg-amber-100 text-amber-800' :
+                                grade === '0' ? 'bg-rose-100 text-rose-800' : 'text-slate-500'
+                              }`}>
+                                {grade}
+                              </span>
+                            </td>
+                            <td className="py-1 px-2 text-center font-semibold">
+                              {isPassed === true && <span className="text-emerald-700">ผ่าน</span>}
+                              {isPassed === false && <span className="text-rose-700">ไม่ผ่าน</span>}
+                              {isPassed === null && <span className="text-slate-400">-</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                    {/* 2. รายวิชาเพิ่มเติม */}
+                    {result.subjectsWithGrades.filter(i => i.subject.type === 'เพิ่มเติม').length > 0 && (
+                      <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px] print-table-row">
+                        <td colSpan={6} className="py-0.5 px-2 border-r border-slate-300">
+                          รายวิชาเพิ่มเติม
+                        </td>
+                      </tr>
+                    )}
+                    {result.subjectsWithGrades
+                      .filter(i => i.subject.type === 'เพิ่มเติม')
+                      .map(({ subject, scoreRecord }) => {
+                        const total = scoreRecord?.yearlyTotal ?? (scoreRecord?.total1 !== null && scoreRecord?.total1 !== undefined ? scoreRecord.total1 : '-');
+                        const grade = scoreRecord?.grade && scoreRecord.grade !== '-' ? scoreRecord.grade : '-';
+                        const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
+
+                        return (
+                          <tr key={subject.id} className="print-table-row hover:bg-slate-50">
+                            <td className="py-1 px-2 text-center font-mono border-r border-slate-300">{subject.code}</td>
+                            <td className="py-1 px-2 border-r border-slate-300 font-medium pl-4">{subject.name}</td>
+                            <td className="py-1 px-2 text-center border-r border-slate-300">{subject.credits}</td>
+                            <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                              {total}
+                            </td>
+                            <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                                grade === '4' ? 'bg-emerald-100 text-emerald-800' :
+                                grade === '3.5' || grade === '3' ? 'bg-teal-100 text-teal-800' :
+                                grade === '2.5' || grade === '2' ? 'bg-blue-100 text-blue-800' :
+                                grade === '1.5' || grade === '1' ? 'bg-amber-100 text-amber-800' :
+                                grade === '0' ? 'bg-rose-100 text-rose-800' : 'text-slate-500'
+                              }`}>
+                                {grade}
+                              </span>
+                            </td>
+                            <td className="py-1 px-2 text-center font-semibold">
+                              {isPassed === true && <span className="text-emerald-700">ผ่าน</span>}
+                              {isPassed === false && <span className="text-rose-700">ไม่ผ่าน</span>}
+                              {isPassed === null && <span className="text-slate-400">-</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                    {/* 3. กิจกรรมพัฒนาผู้เรียน (ถ้ามี) */}
+                    {result.subjectsWithGrades.filter(i => i.subject.type === 'กิจกรรม').length > 0 && (
+                      <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px] print-table-row">
+                        <td colSpan={6} className="py-0.5 px-2 border-r border-slate-300">
+                          กิจกรรมพัฒนาผู้เรียน
+                        </td>
+                      </tr>
+                    )}
+                    {result.subjectsWithGrades
+                      .filter(i => i.subject.type === 'กิจกรรม')
+                      .map(({ subject, scoreRecord }) => {
+                        const total = scoreRecord?.yearlyTotal ?? (scoreRecord?.total1 !== null && scoreRecord?.total1 !== undefined ? scoreRecord.total1 : '-');
+                        const grade = scoreRecord?.grade && scoreRecord.grade !== '-' ? scoreRecord.grade : '-';
+                        const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
+
+                        return (
+                          <tr key={subject.id} className="print-table-row hover:bg-slate-50">
+                            <td className="py-1 px-2 text-center font-mono border-r border-slate-300">{subject.code}</td>
+                            <td className="py-1 px-2 border-r border-slate-300 font-medium pl-4">{subject.name}</td>
+                            <td className="py-1 px-2 text-center border-r border-slate-300">{subject.credits}</td>
+                            <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                              {total}
+                            </td>
+                            <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                                grade === '4' ? 'bg-emerald-100 text-emerald-800' :
+                                grade === '3.5' || grade === '3' ? 'bg-teal-100 text-teal-800' :
+                                grade === '2.5' || grade === '2' ? 'bg-blue-100 text-blue-800' :
+                                grade === '1.5' || grade === '1' ? 'bg-amber-100 text-amber-800' :
+                                grade === '0' ? 'bg-rose-100 text-rose-800' : 'text-slate-500'
+                              }`}>
+                                {grade}
+                              </span>
+                            </td>
+                            <td className="py-1 px-2 text-center font-semibold">
+                              {isPassed === true && <span className="text-emerald-700">ผ่าน</span>}
+                              {isPassed === false && <span className="text-rose-700">ไม่ผ่าน</span>}
+                              {isPassed === null && <span className="text-slate-400">-</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>

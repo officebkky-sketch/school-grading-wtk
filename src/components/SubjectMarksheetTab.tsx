@@ -200,11 +200,33 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                   onChange={(e) => setSelectedSubjectId(e.target.value)}
                   className="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                 >
-                  {subjects.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.code} {s.name} ({s.credits} นก. / {s.hoursPerYear} ชม.)
-                    </option>
-                  ))}
+                  {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).length > 0 && (
+                    <optgroup label="── รายวิชาพื้นฐาน ──">
+                      {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} {s.name} ({s.credits} นก. / {s.hoursPerYear} ชม.)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {subjects.filter(s => s.type === 'เพิ่มเติม').length > 0 && (
+                    <optgroup label="── รายวิชาเพิ่มเติม ──">
+                      {subjects.filter(s => s.type === 'เพิ่มเติม').map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} {s.name} ({s.credits} นก. / {s.hoursPerYear} ชม.)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {subjects.filter(s => s.type === 'กิจกรรม').length > 0 && (
+                    <optgroup label="── กิจกรรมพัฒนาผู้เรียน ──">
+                      {subjects.filter(s => s.type === 'กิจกรรม').map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} {s.name} ({s.credits} นก.)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <span className="text-xs px-2.5 py-1 rounded bg-slate-100 text-slate-600 font-medium border border-slate-200">
                   {selectedSubject?.type}

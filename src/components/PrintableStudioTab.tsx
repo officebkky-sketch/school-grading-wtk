@@ -264,19 +264,87 @@ export const PrintableStudioTab: React.FC<Props> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {subjects.map((sub) => {
+                {/* 1. รายวิชาพื้นฐาน */}
+                {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).length > 0 && (
+                  <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px]">
+                    <td colSpan={6} className="p-1 border-r border-slate-300">รายวิชาพื้นฐาน</td>
+                  </tr>
+                )}
+                {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).map((sub) => {
                   const rec = scores[sub.id]?.[std.studentId];
                   const total = rec?.yearlyTotal ?? (rec?.total1 !== null && rec?.total1 !== undefined ? rec.total1 : '-');
                   const grade = rec?.grade && rec.grade !== '-' ? rec.grade : '-';
                   const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
                   return (
                     <tr key={sub.id}>
-                      <td className="p-1.5 text-center font-mono border-r border-slate-300">{sub.code}</td>
-                      <td className="p-1.5 border-r border-slate-300 font-medium">{sub.name}</td>
-                      <td className="p-1.5 text-center border-r border-slate-300">{sub.credits}</td>
-                      <td className="p-1.5 text-center font-mono border-r border-slate-300">{total}</td>
-                      <td className="p-1.5 text-center font-bold font-mono border-r border-slate-300">{grade}</td>
-                      <td className="p-1.5 text-center font-semibold">
+                      <td className="p-1 text-center font-mono border-r border-slate-300">{sub.code}</td>
+                      <td className="p-1 border-r border-slate-300 font-medium pl-4">{sub.name}</td>
+                      <td className="p-1 text-center border-r border-slate-300">{sub.credits}</td>
+                      <td className="p-1 text-center font-mono border-r border-slate-300">{total}</td>
+                      <td className="p-1 text-center font-bold font-mono border-r border-slate-300">{grade}</td>
+                      <td className="p-1 text-center font-semibold">
+                        {isPassed === true ? (
+                          <span className="text-emerald-700">ผ่าน</span>
+                        ) : isPassed === false ? (
+                          <span className="text-rose-600">ไม่ผ่าน</span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* 2. รายวิชาเพิ่มเติม */}
+                {subjects.filter(s => s.type === 'เพิ่มเติม').length > 0 && (
+                  <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px]">
+                    <td colSpan={6} className="p-1 border-r border-slate-300">รายวิชาเพิ่มเติม</td>
+                  </tr>
+                )}
+                {subjects.filter(s => s.type === 'เพิ่มเติม').map((sub) => {
+                  const rec = scores[sub.id]?.[std.studentId];
+                  const total = rec?.yearlyTotal ?? (rec?.total1 !== null && rec?.total1 !== undefined ? rec.total1 : '-');
+                  const grade = rec?.grade && rec.grade !== '-' ? rec.grade : '-';
+                  const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
+                  return (
+                    <tr key={sub.id}>
+                      <td className="p-1 text-center font-mono border-r border-slate-300">{sub.code}</td>
+                      <td className="p-1 border-r border-slate-300 font-medium pl-4">{sub.name}</td>
+                      <td className="p-1 text-center border-r border-slate-300">{sub.credits}</td>
+                      <td className="p-1 text-center font-mono border-r border-slate-300">{total}</td>
+                      <td className="p-1 text-center font-bold font-mono border-r border-slate-300">{grade}</td>
+                      <td className="p-1 text-center font-semibold">
+                        {isPassed === true ? (
+                          <span className="text-emerald-700">ผ่าน</span>
+                        ) : isPassed === false ? (
+                          <span className="text-rose-600">ไม่ผ่าน</span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* 3. กิจกรรมพัฒนาผู้เรียน (ถ้ามี) */}
+                {subjects.filter(s => s.type === 'กิจกรรม').length > 0 && (
+                  <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px]">
+                    <td colSpan={6} className="p-1 border-r border-slate-300">กิจกรรมพัฒนาผู้เรียน</td>
+                  </tr>
+                )}
+                {subjects.filter(s => s.type === 'กิจกรรม').map((sub) => {
+                  const rec = scores[sub.id]?.[std.studentId];
+                  const total = rec?.yearlyTotal ?? (rec?.total1 !== null && rec?.total1 !== undefined ? rec.total1 : '-');
+                  const grade = rec?.grade && rec.grade !== '-' ? rec.grade : '-';
+                  const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
+                  return (
+                    <tr key={sub.id}>
+                      <td className="p-1 text-center font-mono border-r border-slate-300">{sub.code}</td>
+                      <td className="p-1 border-r border-slate-300 font-medium pl-4">{sub.name}</td>
+                      <td className="p-1 text-center border-r border-slate-300">{sub.credits}</td>
+                      <td className="p-1 text-center font-mono border-r border-slate-300">{total}</td>
+                      <td className="p-1 text-center font-bold font-mono border-r border-slate-300">{grade}</td>
+                      <td className="p-1 text-center font-semibold">
                         {isPassed === true ? (
                           <span className="text-emerald-700">ผ่าน</span>
                         ) : isPassed === false ? (
