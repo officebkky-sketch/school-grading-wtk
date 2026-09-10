@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { StudentProfile, SubjectConfig, StudentScoreRecord, AcademicConfig } from '../types/pp5Types';
 import { GradingEngine } from '../engines/gradingEngine';
 import { exportToSchoolMISExcel, exportSchoolMIS_SingleSubjectCSV } from '../utils/schoolMisExporter';
+import { getBasicSubjectSortWeight } from '../utils/subjectSortUtils';
 import { BarChart3, Trophy, GraduationCap, Percent, TrendingUp, FileSpreadsheet, Medal, HelpCircle } from 'lucide-react';
 
 interface Props {
@@ -24,7 +25,11 @@ export const GradeSummaryAnalyticsTab: React.FC<Props> = ({
   // วิธีการจัดลำดับกรณีคะแนนเท่ากัน
   const [rankingMethod, setRankingMethod] = useState<'gpa_rawscore_tiebreaker' | 'gpa_standard'>('gpa_rawscore_tiebreaker');
 
-  const basicSubjects = useMemo(() => subjects.filter(s => s.type === 'พื้นฐาน' || !s.type), [subjects]);
+  const basicSubjects = useMemo(() => {
+    return [...subjects.filter(s => s.type === 'พื้นฐาน' || !s.type)].sort(
+      (a, b) => getBasicSubjectSortWeight(a.code, a.name) - getBasicSubjectSortWeight(b.code, b.name)
+    );
+  }, [subjects]);
   const additionalSubjects = useMemo(() => subjects.filter(s => s.type === 'เพิ่มเติม'), [subjects]);
   const activitySubjects = useMemo(() => subjects.filter(s => s.type === 'กิจกรรม'), [subjects]);
   const sortedSubjects = useMemo(() => [...basicSubjects, ...additionalSubjects, ...activitySubjects], [basicSubjects, additionalSubjects, activitySubjects]);

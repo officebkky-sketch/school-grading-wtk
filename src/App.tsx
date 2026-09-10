@@ -23,6 +23,7 @@ import { HealthGrowthStudioTab } from './components/HealthGrowthStudioTab';
 import { AttendanceTrackerTab } from './components/AttendanceTrackerTab';
 import { HolisticAssessmentTab } from './components/HolisticAssessmentTab';
 import { PrintableStudioTab } from './components/PrintableStudioTab';
+import { sortSubjectConfigs } from './utils/subjectSortUtils';
 import { CloudSyncBar } from './components/CloudSyncBar';
 import { CloudSyncEngine } from './services/syncService';
 import { OnlineAnnouncementControlModal } from './components/OnlineAnnouncementControlModal';
@@ -468,8 +469,10 @@ export const App: React.FC = () => {
     });
   }, [config.classLevel, classTeacherMap]);
 
-  // Current Class Subjects & Students
-  const currentSubjects = classSubjects[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
+  // Current Class Subjects & Students (จัดเรียงรายวิชาพื้นฐานตามมาตรฐาน สพฐ. ท, ค, ว, ส(สังคม), ส(ประวัติศาสตร์), พ, ศ, ง, อ)
+  const currentSubjects = React.useMemo(() => {
+    return sortSubjectConfigs(classSubjects[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || []);
+  }, [classSubjects, config.classLevel]);
   const currentStudents = classStudents[config.classLevel] || [];
   const currentClassScores = scoresStore[config.classLevel] || {};
 

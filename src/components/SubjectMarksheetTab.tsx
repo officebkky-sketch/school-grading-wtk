@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { StudentProfile, SubjectConfig, StudentScoreRecord, AcademicConfig } from '../types/pp5Types';
 import { GradingEngine } from '../engines/gradingEngine';
 import { exportSchoolMIS_SingleSubjectCSV, exportTeacherPersonalBackupExcel } from '../utils/schoolMisExporter';
+import { getBasicSubjectSortWeight } from '../utils/subjectSortUtils';
 import {
   BookOpen,
   BarChart3,
@@ -202,11 +203,13 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                 >
                   {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).length > 0 && (
                     <optgroup label="── รายวิชาพื้นฐาน ──">
-                      {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.code} {s.name} ({s.credits} นก. / {s.hoursPerYear} ชม.)
-                        </option>
-                      ))}
+                      {[...subjects.filter(s => s.type === 'พื้นฐาน' || !s.type)]
+                        .sort((a, b) => getBasicSubjectSortWeight(a.code, a.name) - getBasicSubjectSortWeight(b.code, b.name))
+                        .map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.code} {s.name} ({s.credits} นก. / {s.hoursPerYear} ชม.)
+                          </option>
+                        ))}
                     </optgroup>
                   )}
                   {subjects.filter(s => s.type === 'เพิ่มเติม').length > 0 && (

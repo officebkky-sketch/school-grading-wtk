@@ -12,6 +12,7 @@ import {
 import { GradingEngine } from '../engines/gradingEngine';
 import { AcademicCertificateStudio } from './AcademicCertificateStudio';
 import { calculateStudentAge, formatThaiBirthDate } from '../utils/studentDateUtils';
+import { getBasicSubjectSortWeight } from '../utils/subjectSortUtils';
 import { 
   Printer, 
   FileText, 
@@ -270,7 +271,9 @@ export const PrintableStudioTab: React.FC<Props> = ({
                     <td colSpan={6} className="p-1 border-r border-slate-300">รายวิชาพื้นฐาน</td>
                   </tr>
                 )}
-                {subjects.filter(s => s.type === 'พื้นฐาน' || !s.type).map((sub) => {
+                {[...subjects.filter(s => s.type === 'พื้นฐาน' || !s.type)]
+                  .sort((a, b) => getBasicSubjectSortWeight(a.code, a.name) - getBasicSubjectSortWeight(b.code, b.name))
+                  .map((sub) => {
                   const rec = scores[sub.id]?.[std.studentId];
                   const total = rec?.yearlyTotal ?? (rec?.total1 !== null && rec?.total1 !== undefined ? rec.total1 : '-');
                   const grade = rec?.grade && rec.grade !== '-' ? rec.grade : '-';

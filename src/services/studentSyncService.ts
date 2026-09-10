@@ -8,6 +8,7 @@ import { INITIAL_SCORES } from '../data/initialScoresData';
 import { GradingEngine } from '../engines/gradingEngine';
 import { GrowthEngine } from '../engines/growthEngine';
 import { calculateStudentAge, formatThaiBirthDate } from '../utils/studentDateUtils';
+import { sortSubjectsWithGrades } from '../utils/subjectSortUtils';
 
 export interface StudentOnlineResult {
   student: StudentProfile;
@@ -401,6 +402,9 @@ export class StudentSyncService {
         };
       });
     }
+
+    // เรียงลำดับรายวิชาพื้นฐานตามมาตรฐาน สพฐ.: ท, ค, ว, ส(สังคม), ส(ประวัติศาสตร์), พ, ศ, ง, อ
+    subjectsWithGrades = sortSubjectsWithGrades(subjectsWithGrades);
 
     // คำนวณ GPA
     const gradeList: { grade: string; credits: number }[] = [];

@@ -27,6 +27,7 @@ import { calculateStudentAge, formatThaiBirthDate } from '../utils/studentDateUt
 import { AnnouncementService, AnnouncementConfig } from '../services/announcementService';
 import { AuthenticatedUser } from '../services/authService';
 import { AUTHENTIC_DIRECTOR, DEFAULT_CLASS_TEACHER_MAP } from '../data/teachersData';
+import { getBasicSubjectSortWeight } from '../utils/subjectSortUtils';
 
 interface Props {
   localStudents: Record<string, StudentProfile[]>;
@@ -725,8 +726,8 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                         </td>
                       </tr>
                     )}
-                    {result.subjectsWithGrades
-                      .filter(i => i.subject.type === 'พื้นฐาน' || !i.subject.type)
+                    {[...result.subjectsWithGrades.filter(i => i.subject.type === 'พื้นฐาน' || !i.subject.type)]
+                      .sort((a, b) => getBasicSubjectSortWeight(a.subject.code, a.subject.name) - getBasicSubjectSortWeight(b.subject.code, b.subject.name))
                       .map(({ subject, scoreRecord }) => {
                         const total = scoreRecord?.yearlyTotal ?? (scoreRecord?.total1 !== null && scoreRecord?.total1 !== undefined ? scoreRecord.total1 : '-');
                         const grade = scoreRecord?.grade && scoreRecord.grade !== '-' ? scoreRecord.grade : '-';
