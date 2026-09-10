@@ -455,6 +455,28 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleUpdateSubject = (updatedSub: SubjectConfig) => {
+    setClassSubjects(prev => {
+      const list = prev[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
+      const updatedList = list.map(s => s.id === updatedSub.id ? updatedSub : s);
+      const newState = { ...prev, [config.classLevel]: updatedList };
+      localStorage.setItem(`pp5_class_subjects_${config.academicYear}`, JSON.stringify(newState));
+      localStorage.setItem('pp5_class_subjects', JSON.stringify(newState));
+      return newState;
+    });
+
+    const currentSubs = (classSubjects[config.classLevel] || []).map(s => s.id === updatedSub.id ? updatedSub : s);
+    const currentStudents = classStudents[config.classLevel] || [];
+    const currentClassScores = scoresStore[config.classLevel] || {};
+    CloudSyncEngine.autoSyncClassToCloud(
+      config.classLevel,
+      currentSubs,
+      currentStudents,
+      currentClassScores,
+      config
+    );
+  };
+
   const handleDeleteSubject = (id: string) => {
     setClassSubjects(prev => {
       const list = prev[config.classLevel] || CLASS_SUBJECTS_MAP[config.classLevel] || [];
@@ -770,6 +792,7 @@ export const App: React.FC = () => {
             config={config}
             teacherName={authUser?.displayName || config.homeroomTeacher}
             onAddSubject={handleAddSubject}
+            onUpdateSubject={handleUpdateSubject}
             onDeleteSubject={handleDeleteSubject}
             canEdit={canEditClass}
           />
