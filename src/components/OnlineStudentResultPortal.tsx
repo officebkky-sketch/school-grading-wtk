@@ -39,6 +39,8 @@ interface Props {
   directorName?: string;
   directorSignatureUrl?: string;
   classTeacherMap?: Record<string, string>;
+  classTeacherSigMap?: Record<string, string>;
+  teacherNameSigMap?: Record<string, string>;
   localAttendance?: Record<string, Record<string, any>>;
   localHolistic?: Record<string, Record<string, any>>;
   authUser?: AuthenticatedUser | null;
@@ -58,6 +60,8 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   directorName,
   directorSignatureUrl,
   classTeacherMap,
+  classTeacherSigMap,
+  teacherNameSigMap,
   localAttendance,
   localHolistic,
   authUser,
@@ -72,12 +76,14 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   const [result, setResult] = useState<StudentOnlineResult | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
-  // ผู้อำนวยการ, ลายเซ็น ผอ., และครูประจำชั้น
+  // ผู้อำนวยการ, ลายเซ็น ผอ., และครูประจำชั้น (พร้อมลายเซ็นจากข้อมูลส่วนตัว)
   const [syncedDirectorName, setSyncedDirectorName] = useState<string>(directorName || '');
   const [syncedDirectorSig, setSyncedDirectorSig] = useState<string>(directorSignatureUrl || '');
   const [syncedTeacherMap, setSyncedTeacherMap] = useState<Record<string, string>>(classTeacherMap || {});
+  const [syncedTeacherSigMap, setSyncedTeacherSigMap] = useState<Record<string, string>>(classTeacherSigMap || {});
+  const [syncedTeacherNameSigMap, setSyncedTeacherNameSigMap] = useState<Record<string, string>>(teacherNameSigMap || {});
 
-  // ดึงข้อมูลโรงเรียน/ผอ./ครูประจำชั้นจาก Supabase สดใหม่
+  // ดึงข้อมูลโรงเรียน/ผอ./ครูประจำชั้น และลายเซ็นจาก Supabase สดใหม่
   useEffect(() => {
     StudentSyncService.fetchSchoolSettingsFromSupabase().then(settings => {
       if (settings) {
@@ -87,8 +93,16 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
     });
 
     StudentSyncService.fetchHomeroomAssignmentsFromSupabase().then(dutyRes => {
-      if (dutyRes && dutyRes.classTeacherMap && Object.keys(dutyRes.classTeacherMap).length > 0) {
-        setSyncedTeacherMap(prev => ({ ...prev, ...dutyRes.classTeacherMap }));
+      if (dutyRes) {
+        if (dutyRes.classTeacherMap && Object.keys(dutyRes.classTeacherMap).length > 0) {
+          setSyncedTeacherMap(prev => ({ ...prev, ...dutyRes.classTeacherMap }));
+        }
+        if (dutyRes.classTeacherSigMap && Object.keys(dutyRes.classTeacherSigMap).length > 0) {
+          setSyncedTeacherSigMap(prev => ({ ...prev, ...dutyRes.classTeacherSigMap }));
+        }
+        if (dutyRes.teacherNameSigMap && Object.keys(dutyRes.teacherNameSigMap).length > 0) {
+          setSyncedTeacherNameSigMap(prev => ({ ...prev, ...dutyRes.teacherNameSigMap }));
+        }
       }
     });
   }, []);
@@ -108,11 +122,43 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
     }
   }, [classTeacherMap]);
 
+  useEffect(() => {
+    if (classTeacherSigMap && Object.keys(classTeacherSigMap).length > 0) {
+      setSyncedTeacherSigMap(prev => ({ ...prev, ...classTeacherSigMap }));
+    }
+  }, [classTeacherSigMap]);
+
+  useEffect(() => {
+    if (teacherNameSigMap && Object.keys(teacherNameSigMap).length > 0) {
+      setSyncedTeacherNameSigMap(prev => ({ ...prev, ...teacherNameSigMap }));
+    }
+  }, [teacherNameSigMap]);
+
   const effectiveDirectorName = (syncedDirectorName || directorName || AUTHENTIC_DIRECTOR?.name || 'นางจันทวรรณ พิทักษ์ฉนวน').replace(/\s+/g, ' ').trim();
   const effectiveDirectorSig = syncedDirectorSig || directorSignatureUrl || 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/director_sig_1779943287141.png';
 
   const getHomeroomTeacherName = (cls: string) => {
     return syncedTeacherMap[cls] || classTeacherMap?.[cls] || DEFAULT_CLASS_TEACHER_MAP[cls] || 'นางสุมาวดี สมบูรณ์';
+  };
+
+  const getHomeroomTeacherSignature = (cls: string): string => {
+    // 1. จาก classTeacherSigMap
+    const fromClass = syncedTeacherSigMap[cls] || classTeacherSigMap?.[cls];
+    if (fromClass) return fromClass;
+
+    // 2. จากชื่อครูประจำชั้น
+    const teacherName = getHomeroomTeacherName(cls);
+    if (teacherName) {
+      const clean = teacherName.replace(/\s+/g, ' ').trim();
+      const allNameSigs = { ...teacherNameSigMap, ...syncedTeacherNameSigMap };
+      if (allNameSigs[clean]) return allNameSigs[clean];
+      for (const [tName, sig] of Object.entries(allNameSigs)) {
+        if (sig && (clean.includes(tName) || tName.includes(clean))) {
+          return sig;
+        }
+      }
+    }
+    return '';
   };
 
   const getClassDisplayName = (cls: string): string => {
@@ -711,8 +757,17 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
               <div className="pt-2 border-t border-slate-300 grid grid-cols-2 text-center text-xs text-slate-800 break-inside-avoid">
                 {/* ครูประจำชั้น */}
                 <div className="flex flex-col items-center justify-end">
-                  <div className="h-9 flex items-end justify-center pb-1">
-                    {/* เว้นพื้นที่สำหรับลงนามจริง */}
+                  <div className="h-9 flex items-center justify-center">
+                    {getHomeroomTeacherSignature(result.classLevel) ? (
+                      <img
+                        src={getHomeroomTeacherSignature(result.classLevel)}
+                        alt="ลายมือชื่อครูประจำชั้น"
+                        className="print-signature-img h-9 max-w-[130px] object-contain mix-blend-multiply"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="h-9"></div>
+                    )}
                   </div>
                   <div>ลงชื่อ..........................................................</div>
                   <div className="mt-1 font-bold">

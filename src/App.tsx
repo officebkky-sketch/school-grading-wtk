@@ -182,6 +182,30 @@ export const App: React.FC = () => {
     return localStorage.getItem('pp5_director_sig') || 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/director_sig_1779943287141.png';
   });
 
+  const [classTeacherSigMap, setClassTeacherSigMap] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('pp5_class_teacher_sigs');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch {}
+    }
+    return {};
+  });
+
+  const [teacherNameSigMap, setTeacherNameSigMap] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('pp5_teacher_name_sigs');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch {}
+    }
+    return {
+      'นางจันทวรรณ พิทักษ์ฉนวน': 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/director_sig_1779943287141.png'
+    };
+  });
+
   // Fetch active students & homeroom assignments & school branding from Supabase (ระบบหลัก) on initial load
   useEffect(() => {
     StudentSyncService.fetchSchoolSettingsFromSupabase().then((settingsData) => {
@@ -217,6 +241,14 @@ export const App: React.FC = () => {
       if (dutyData) {
         if (dutyData.classTeacherMap && Object.keys(dutyData.classTeacherMap).length > 0) {
           setClassTeacherMap(prev => ({ ...prev, ...dutyData.classTeacherMap }));
+        }
+        if (dutyData.classTeacherSigMap && Object.keys(dutyData.classTeacherSigMap).length > 0) {
+          setClassTeacherSigMap(prev => ({ ...prev, ...dutyData.classTeacherSigMap }));
+          localStorage.setItem('pp5_class_teacher_sigs', JSON.stringify(dutyData.classTeacherSigMap));
+        }
+        if (dutyData.teacherNameSigMap && Object.keys(dutyData.teacherNameSigMap).length > 0) {
+          setTeacherNameSigMap(prev => ({ ...prev, ...dutyData.teacherNameSigMap }));
+          localStorage.setItem('pp5_teacher_name_sigs', JSON.stringify(dutyData.teacherNameSigMap));
         }
         if (dutyData.teachers && dutyData.teachers.length > 0) {
           setTeachers(dutyData.teachers);
@@ -601,6 +633,8 @@ export const App: React.FC = () => {
           directorName={config.directorName}
           directorSignatureUrl={directorSignatureUrl}
           classTeacherMap={classTeacherMap}
+          classTeacherSigMap={classTeacherSigMap}
+          teacherNameSigMap={teacherNameSigMap}
           authUser={authUser}
           announcementConfig={announcementConfig}
           onOpenAnnouncementModal={() => setIsAnnouncementModalOpen(true)}
@@ -848,6 +882,12 @@ export const App: React.FC = () => {
             config={config}
             logoUrl={schoolLogoUrl}
             directorSignatureUrl={directorSignatureUrl}
+            homeroomTeacherSignatureUrl={
+              classTeacherSigMap[config.classLevel] ||
+              teacherNameSigMap[config.homeroomTeacher] ||
+              authUser?.signatureUrl ||
+              ''
+            }
             attendanceData={attendanceStore[config.classLevel] || {}}
             holisticData={holisticStore[config.classLevel] || {}}
           />

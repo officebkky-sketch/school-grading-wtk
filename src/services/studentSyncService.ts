@@ -457,6 +457,8 @@ export class StudentSyncService {
   public static async fetchHomeroomAssignmentsFromSupabase(): Promise<{
     classTeacherMap: Record<string, string>;
     classAllTeachersMap: Record<string, string[]>;
+    classTeacherSigMap: Record<string, string>;
+    teacherNameSigMap: Record<string, string>;
     teachers: TeacherProfile[];
   } | null> {
     if (!isSupabaseConfigured || !supabase) {
@@ -479,24 +481,75 @@ export class StudentSyncService {
 
       const dutiesList = duties || [];
 
-      const teacherMap: Record<string, { id: string; name: string; position: string; phone?: string }> = {};
+      // 3. ดึงข้อมูลลายเซ็นครู (signature_url) จากตาราง profiles ในระบบหลัก
+      let profileRows: any[] = [];
+      try {
+        const { data: pRows } = await supabase
+          .from('profiles')
+          .select('id, email, display_name, signature_url');
+        if (pRows) profileRows = pRows;
+      } catch (pErr) {
+        console.warn('Profiles query failed or restricted by RLS:', pErr);
+      }
+
+      // Helper ค้นหาลายเซ็นของครูจาก profiles
+      const findTeacherSignature = (t: any): string => {
+        if (t.user_id) {
+          const matched = profileRows.find(p => p.id === t.user_id && p.signature_url);
+          if (matched?.signature_url) return matched.signature_url;
+        }
+        if (t.email) {
+          const emailClean = t.email.toLowerCase().trim();
+          const matched = profileRows.find(p => p.email && p.email.toLowerCase().trim() === emailClean && p.signature_url);
+          if (matched?.signature_url) return matched.signature_url;
+        }
+        const tFirst = (t.first_name || '').trim();
+        const tLast = (t.last_name || '').trim();
+        if (tFirst) {
+          const matched = profileRows.find(p => {
+            if (!p.signature_url || !p.display_name) return false;
+            return p.display_name.includes(tFirst) || (tLast && p.display_name.includes(tLast));
+          });
+          if (matched?.signature_url) return matched.signature_url;
+        }
+        return '';
+      };
+
+      const teacherMap: Record<string, { id: string; name: string; position: string; phone?: string; signatureUrl?: string }> = {};
       (teacherRows || []).forEach((t: any) => {
+        const sigUrl = findTeacherSignature(t);
         teacherMap[t.id] = {
           id: t.id,
           name: `${t.prefix || ''}${t.first_name || ''} ${t.last_name || ''}`.replace(/\s+/g, ' ').trim(),
           position: t.position || '',
-          phone: t.phone || ''
+          phone: t.phone || '',
+          signatureUrl: sigUrl || undefined
         };
       });
 
       const classTeacherMap: Record<string, string> = {};
+      const classTeacherSigMap: Record<string, string> = {};
+      const teacherNameSigMap: Record<string, string> = {};
       const classAllTeachersMap: Record<string, string[]> = {};
       const teacherClassAssignments: Record<string, string[]> = {};
+
+      // รวบรวมลายเซ็นครูตามชื่อ
+      Object.values(teacherMap).forEach(t => {
+        if (t.name && t.signatureUrl) {
+          teacherNameSigMap[t.name] = t.signatureUrl;
+        }
+      });
+      profileRows.forEach(p => {
+        if (p.display_name && p.signature_url) {
+          teacherNameSigMap[p.display_name.trim()] = p.signature_url;
+        }
+      });
 
       dutiesList.forEach((d: any) => {
         const cls = (d.duty_day || '').trim();
         const teacherObj = teacherMap[d.teacher_id];
         const teacherName = teacherObj ? teacherObj.name : '';
+        const teacherSig = teacherObj?.signatureUrl || '';
 
         if (cls && teacherName) {
           if (!classAllTeachersMap[cls]) classAllTeachersMap[cls] = [];
@@ -507,6 +560,9 @@ export class StudentSyncService {
           // ครูประจำชั้นหลัก เป็นค่า default สำหรับหัวเอกสาร ปพ.
           if (d.duty_type?.includes('หลัก') || !classTeacherMap[cls]) {
             classTeacherMap[cls] = teacherName;
+            if (teacherSig) {
+              classTeacherSigMap[cls] = teacherSig;
+            }
           }
 
           if (!teacherClassAssignments[d.teacher_id]) {
@@ -532,7 +588,8 @@ export class StudentSyncService {
           role: isDirector ? 'director' : (isAcademicHead ? 'academic_head' : 'homeroom_teacher'),
           roleTitle: t.position || (isDirector ? 'ผู้อำนวยการโรงเรียน' : (assigned.length > 0 ? `ครูประจำชั้น ${assigned.join(', ')}` : 'ครูผู้สอน')),
           assignedClasses: assigned,
-          phoneNumber: t.phone || undefined
+          phoneNumber: t.phone || undefined,
+          signatureUrl: findTeacherSignature(t) || undefined
         };
       });
 
@@ -548,6 +605,8 @@ export class StudentSyncService {
       return {
         classTeacherMap,
         classAllTeachersMap,
+        classTeacherSigMap,
+        teacherNameSigMap,
         teachers
       };
     } catch (err) {

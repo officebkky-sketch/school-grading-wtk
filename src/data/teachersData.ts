@@ -7,6 +7,7 @@ export interface TeacherProfile {
   roleTitle: string;
   assignedClasses: string[]; // e.g. ['ป.1'] or ['*'] for all classes
   phoneNumber?: string;
+  signatureUrl?: string;
 }
 
 export const AUTHENTIC_DIRECTOR: TeacherProfile = {
