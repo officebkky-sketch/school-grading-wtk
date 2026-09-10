@@ -152,7 +152,7 @@ export const TeacherLoginModal: React.FC<Props> = ({
                   <input
                     type="text"
                     required
-                    placeholder="เช่น watchan6441@gmail.com หรือ สุธัญญา"
+                    placeholder="เช่น อีเมลระบบหลัก หรือ ชื่อครูผู้สอน"
                     value={emailOrUser}
                     onChange={(e) => setEmailOrUser(e.target.value)}
                     className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"

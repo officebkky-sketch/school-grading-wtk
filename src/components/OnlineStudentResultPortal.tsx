@@ -373,7 +373,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                       required
                       maxLength={13}
                       pattern="[0-9]{13}"
-                      placeholder="เช่น 1939901054427"
+                      placeholder="เช่น 193xxxxxxxxx"
                       value={nationalId}
                       onChange={(e) => setNationalId(e.target.value.replace(/\D/g, ''))}
                       className="w-full pl-9 pr-4 py-2.5 text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
@@ -391,7 +391,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                     <input
                       type="password"
                       required
-                      placeholder="เช่น 3797"
+                      placeholder="เช่น 37xx"
                       value={studentId}
                       onChange={(e) => setStudentId(e.target.value)}
                       className="w-full pl-9 pr-4 py-2.5 text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
