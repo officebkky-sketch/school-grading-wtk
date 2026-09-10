@@ -2,7 +2,7 @@
   "name": "school-grading-wtk",
   "productName": "ระบบวัดผล ปพ.5-6 ดิจิทัล - วัดท่าควาย",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ระบบวัดผลและประเมินผล ปพ.5-6 ดิจิทัล (สพฐ.) โรงเรียนวัดท่าควาย",
   "author": "โรงเรียนวัดท่าควาย",
   "main": "electron/main.cjs",
