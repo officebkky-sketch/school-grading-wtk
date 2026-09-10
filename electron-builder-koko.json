@@ -1,0 +1,19 @@
+{
+  "appId": "com.schoolgrading.pp56.koko",
+  "productName": "ระบบวัดผลและประเมินผล ปพ.5-6 ดิจิทัล",
+  "directories": {
+    "output": "dist-installer"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "shortcutName": "ระบบวัดผลและประเมินผล ปพ.5-6 ดิจิทัล",
+    "deleteAppDataOnUninstall": false
+  },
+  "win": {
+    "target": "nsis",
+    "icon": "public/logo.png",
+    "artifactName": "ระบบวัดผลและประเมินผล-ปพ5-6-ดิจิทัล-บ้านควนโคกยา-Setup-${version}.${ext}"
+  }
+}
