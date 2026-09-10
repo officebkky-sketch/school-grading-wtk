@@ -26,6 +26,7 @@ import { PortalQrModal } from './PortalQrModal';
 import { calculateStudentAge, formatThaiBirthDate } from '../utils/studentDateUtils';
 import { AnnouncementService, AnnouncementConfig } from '../services/announcementService';
 import { AuthenticatedUser } from '../services/authService';
+import { AUTHENTIC_DIRECTOR, DEFAULT_CLASS_TEACHER_MAP } from '../data/teachersData';
 
 interface Props {
   localStudents: Record<string, StudentProfile[]>;
@@ -35,6 +36,9 @@ interface Props {
   schoolName: string;
   schoolId?: string;
   logoUrl?: string;
+  directorName?: string;
+  directorSignatureUrl?: string;
+  classTeacherMap?: Record<string, string>;
   localAttendance?: Record<string, Record<string, any>>;
   localHolistic?: Record<string, Record<string, any>>;
   authUser?: AuthenticatedUser | null;
@@ -51,6 +55,9 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   schoolName,
   schoolId = '93010069',
   logoUrl,
+  directorName,
+  directorSignatureUrl,
+  classTeacherMap,
   localAttendance,
   localHolistic,
   authUser,
@@ -64,6 +71,63 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [result, setResult] = useState<StudentOnlineResult | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+  // ผู้อำนวยการ, ลายเซ็น ผอ., และครูประจำชั้น
+  const [syncedDirectorName, setSyncedDirectorName] = useState<string>(directorName || '');
+  const [syncedDirectorSig, setSyncedDirectorSig] = useState<string>(directorSignatureUrl || '');
+  const [syncedTeacherMap, setSyncedTeacherMap] = useState<Record<string, string>>(classTeacherMap || {});
+
+  // ดึงข้อมูลโรงเรียน/ผอ./ครูประจำชั้นจาก Supabase สดใหม่
+  useEffect(() => {
+    StudentSyncService.fetchSchoolSettingsFromSupabase().then(settings => {
+      if (settings) {
+        if (settings.directorName) setSyncedDirectorName(settings.directorName.trim());
+        if (settings.directorSignatureUrl) setSyncedDirectorSig(settings.directorSignatureUrl);
+      }
+    });
+
+    StudentSyncService.fetchHomeroomAssignmentsFromSupabase().then(dutyRes => {
+      if (dutyRes && dutyRes.classTeacherMap && Object.keys(dutyRes.classTeacherMap).length > 0) {
+        setSyncedTeacherMap(prev => ({ ...prev, ...dutyRes.classTeacherMap }));
+      }
+    });
+  }, []);
+
+  // Sync props if changed
+  useEffect(() => {
+    if (directorName) setSyncedDirectorName(directorName);
+  }, [directorName]);
+
+  useEffect(() => {
+    if (directorSignatureUrl) setSyncedDirectorSig(directorSignatureUrl);
+  }, [directorSignatureUrl]);
+
+  useEffect(() => {
+    if (classTeacherMap && Object.keys(classTeacherMap).length > 0) {
+      setSyncedTeacherMap(prev => ({ ...prev, ...classTeacherMap }));
+    }
+  }, [classTeacherMap]);
+
+  const effectiveDirectorName = (syncedDirectorName || directorName || AUTHENTIC_DIRECTOR?.name || 'นางจันทวรรณ พิทักษ์ฉนวน').replace(/\s+/g, ' ').trim();
+  const effectiveDirectorSig = syncedDirectorSig || directorSignatureUrl || 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/director_sig_1779943287141.png';
+
+  const getHomeroomTeacherName = (cls: string) => {
+    return syncedTeacherMap[cls] || classTeacherMap?.[cls] || DEFAULT_CLASS_TEACHER_MAP[cls] || 'นางสุมาวดี สมบูรณ์';
+  };
+
+  const getClassDisplayName = (cls: string): string => {
+    if (cls.startsWith('ป.')) {
+      const num = cls.replace('ป.', '').trim();
+      const thaiNum = ['๐', '๑', '๒', '๓', '๔', '๕', '๖'][Number(num)] || num;
+      return `ประถมศึกษาปีที่ ${thaiNum}`;
+    }
+    if (cls.startsWith('อ.')) {
+      const num = cls.replace('อ.', '').trim();
+      const thaiNum = ['๐', '๑', '๒', '๓'][Number(num)] || num;
+      return `อนุบาลปีที่ ${thaiNum}`;
+    }
+    return cls;
+  };
 
   // ตรวจสอบสิทธิ์ผู้บริหาร/วิชาการ และสถานะการประกาศผล
   const isPrivilegedUser = AnnouncementService.canManageAnnouncement(authUser);
@@ -148,7 +212,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="print-root-container min-h-screen bg-slate-100 flex flex-col font-sans print:bg-white print:min-h-0">
       {/* Top Navbar */}
       <header className="bg-emerald-800 text-white shadow-md no-print sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
@@ -196,7 +260,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-center">
+      <main className="print-main-content flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-center print:p-0 print:m-0 print:max-w-none">
         {!result ? (
           /* Search Card */
           <div className="max-w-md w-full mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
@@ -357,7 +421,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
           </div>
         ) : (
           /* Result View */
-          <div className="space-y-6">
+          <div className="space-y-6 print:space-y-0">
             {/* Preview Banner for Director / Academic Head */}
             {!isClassPublished && isPrivilegedUser && (
               <div className="bg-amber-500 text-slate-950 p-3.5 rounded-xl font-semibold text-xs flex flex-wrap items-center justify-between gap-2 border border-amber-600 shadow-sm no-print">
@@ -423,127 +487,187 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Official Report Card (A4 format on print) */}
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 sm:p-10 text-slate-900 print:shadow-none print:border-none print:p-4">
+            {/* Print Stylesheet for Strict 1-Page A4 Fit */}
+            <style dangerouslySetInnerHTML={{ __html: `
+              @page {
+                size: A4 portrait;
+                margin: 6mm 8mm 6mm 8mm;
+              }
+              @media print {
+                html, body {
+                  background: #ffffff !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                .no-print {
+                  display: none !important;
+                }
+                .print-root-container {
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  background: #ffffff !important;
+                  min-height: auto !important;
+                }
+                .print-card-box {
+                  box-shadow: none !important;
+                  border: none !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  max-width: 100% !important;
+                  width: 100% !important;
+                  border-radius: 0 !important;
+                }
+                .print-table-row th, .print-table-row td {
+                  padding-top: 2px !important;
+                  padding-bottom: 2px !important;
+                  font-size: 11px !important;
+                  line-height: 1.25 !important;
+                }
+                .print-signature-img {
+                  max-height: 36px !important;
+                  display: block !important;
+                }
+              }
+            `}} />
+
+            {/* Official Report Card (Strict Single-Page A4 on Print) */}
+            <div className="print-card-box bg-white rounded-2xl shadow-xl border border-slate-200 p-5 sm:p-8 text-slate-900 print:shadow-none print:border-none print:p-0">
               {/* Official Header */}
-              <div className="text-center border-b-2 border-slate-900 pb-4 mb-6">
-                <div className="flex items-center justify-center gap-3 mb-2">
+              <div className="text-center border-b-2 border-slate-900 pb-2 mb-2.5">
+                <div className="flex items-center justify-center gap-2 mb-1">
                   <img
                     src={logoUrl || '/logo.png'}
                     alt="Logo"
-                    className="w-14 h-14 object-contain"
+                    className="w-11 h-11 object-contain"
                     onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                   />
                 </div>
-                <div className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+                <div className="text-[10.5px] font-bold tracking-wider text-slate-500 uppercase">
                   เอกสารหลักฐานการศึกษาตามหลักสูตรแกนกลางการศึกษาขั้นพื้นฐาน พุทธศักราช ๒๕๕๑
                 </div>
-                <h2 className="text-xl font-bold mt-1 text-slate-900">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight mt-0.5">
                   แบบรายงานผลการพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.๖)
                 </h2>
-                <p className="text-sm font-medium text-slate-700 mt-1">
+                <p className="text-[11.5px] font-medium text-slate-700 mt-0.5">
                   โรงเรียน{schoolName} อำเภอเขาชัยสน จังหวัดพัทลุง สำนักงานเขตพื้นที่การศึกษาประถมศึกษาพัทลุง เขต ๒
                 </p>
               </div>
 
-              {/* Student Demographics Info */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-12 gap-y-2.5 gap-x-3 text-xs mb-6">
-                <div className="col-span-12 sm:col-span-4 whitespace-nowrap">
-                  <span className="text-slate-500">ชื่อ - สกุล:</span> <strong className="text-slate-900">{result.student.prefix}{result.student.firstName} {result.student.lastName}</strong>
+              {/* Student Demographics Info (Clean Multi-column, No overlap on print) */}
+              <div className="bg-slate-50/90 p-2.5 rounded-lg border border-slate-300 text-xs mb-2.5 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1.5 text-slate-800">
+                <div className="col-span-2 flex items-baseline gap-1.5 overflow-hidden">
+                  <span className="text-slate-500 shrink-0">ชื่อ - สกุล:</span>
+                  <strong className="text-slate-900 truncate">{result.student.prefix}{result.student.firstName} {result.student.lastName}</strong>
                 </div>
-                <div className="col-span-4 sm:col-span-2 whitespace-nowrap">
-                  <span className="text-slate-500">เลขประจำตัว:</span> <strong className="font-mono">{result.student.studentId}</strong>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-slate-500 shrink-0">เลขประจำตัว:</span>
+                  <strong className="font-mono">{result.student.studentId}</strong>
                 </div>
-                <div className="col-span-8 sm:col-span-3 whitespace-nowrap">
-                  <span className="text-slate-500">เลขประจำตัวประชาชน:</span> <strong className="font-mono">{result.student.nationalId}</strong>
-                </div>
-                <div className="col-span-12 sm:col-span-3 whitespace-nowrap">
-                  <span className="text-slate-500">ระดับชั้น:</span> <strong>ชั้น {result.classLevel} (เลขที่ {result.student.seq})</strong>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-slate-500 shrink-0">เลข ปชช.:</span>
+                  <strong className="font-mono">{result.student.nationalId}</strong>
                 </div>
 
-                <div className="col-span-12 sm:col-span-4 whitespace-nowrap">
-                  <span className="text-slate-500">วันเกิด:</span> <strong>{formatThaiBirthDate(result.student.birthDate)}</strong>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-slate-500 shrink-0">ระดับชั้น:</span>
+                  <strong>ชั้น {result.classLevel} (เลขที่ {result.student.seq})</strong>
                 </div>
-                <div className="col-span-4 sm:col-span-2 whitespace-nowrap">
-                  <span className="text-slate-500">อายุ:</span> <strong>{calculateStudentAge(result.student.birthDate, result.classLevel)} ปี</strong>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-slate-500 shrink-0">วันเกิด:</span>
+                  <strong>{formatThaiBirthDate(result.student.birthDate)}</strong>
                 </div>
-                <div className="col-span-8 sm:col-span-3 whitespace-nowrap">
-                  <span className="text-slate-500">น้ำหนัก / ส่วนสูง:</span> <strong>{result.student.weight || '-'} กก. / {result.student.height || '-'} ซม.</strong>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-slate-500 shrink-0">อายุ:</span>
+                  <strong>{calculateStudentAge(result.student.birthDate, result.classLevel)} ปี</strong>
                 </div>
-                <div className="col-span-12 sm:col-span-3 whitespace-nowrap">
-                  <span className="text-slate-500">ปีการศึกษา:</span> <strong>{result.academicYear}</strong>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-slate-500 shrink-0">ปีการศึกษา:</span>
+                  <strong>{result.academicYear}</strong>
+                </div>
+
+                <div className="col-span-2 sm:col-span-4 flex items-baseline gap-3 text-[11px] text-slate-600 pt-0.5 border-t border-slate-200/80">
+                  <span>น้ำหนัก: <strong className="text-slate-800">{result.student.weight || '-'}</strong> กก.</span>
+                  <span>ส่วนสูง: <strong className="text-slate-800">{result.student.height || '-'}</strong> ซม.</span>
+                  <span>กลุ่มเลือด: <strong className="text-slate-800">{result.student.bloodGroup || '-'}</strong></span>
                 </div>
               </div>
 
-              {/* Summary Badges Grid (GPA, Nutrition, Attendance) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <div className="bg-emerald-50/80 border border-emerald-200 p-3 rounded-xl">
-                  <div className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
-                    <GraduationCap className="w-4 h-4 text-emerald-600" />
-                    เกรดเฉลี่ยสะสม (GPA)
+              {/* Summary Badges Grid (Compact & Neat) */}
+              <div className="grid grid-cols-4 gap-2 mb-2.5">
+                <div className="bg-emerald-50/90 border border-emerald-200 p-2 rounded-lg text-center sm:text-left">
+                  <div className="text-[10px] font-semibold text-emerald-800 flex items-center justify-center sm:justify-start gap-1">
+                    <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                    GPA สะสม
                   </div>
-                  <div className="text-2xl font-bold text-emerald-900 mt-1">
+                  <div className="text-lg font-bold text-emerald-900 mt-0.5">
                     {result.gpa.toFixed(2)}
                   </div>
-                  <div className="text-[10px] text-emerald-600 mt-0.5">
-                    ได้ {result.passedCredits} จาก {result.totalCredits} นก.
+                  <div className="text-[9.5px] text-emerald-700">
+                    ผ่าน {result.passedCredits}/{result.totalCredits} นก.
                   </div>
                 </div>
 
-                <div className="bg-teal-50/80 border border-teal-200 p-3 rounded-xl">
-                  <div className="text-[11px] font-semibold text-teal-800 flex items-center gap-1">
-                    <CalendarCheck className="w-4 h-4 text-teal-600" />
-                    สถิติเวลาเรียน
+                <div className="bg-teal-50/90 border border-teal-200 p-2 rounded-lg text-center sm:text-left">
+                  <div className="text-[10px] font-semibold text-teal-800 flex items-center justify-center sm:justify-start gap-1">
+                    <CalendarCheck className="w-3.5 h-3.5 text-teal-600" />
+                    เวลาเรียน
                   </div>
-                  <div className="text-2xl font-bold text-teal-900 mt-1">
+                  <div className="text-lg font-bold text-teal-900 mt-0.5">
                     {result.attendancePercent}%
                   </div>
-                  <div className="text-[10px] text-teal-600 mt-0.5">
-                    มีสิทธิ์เข้าสอบตามเกณฑ์ (&ge; 80%)
+                  <div className="text-[9.5px] text-teal-700">
+                    {result.attendancePercent >= 80 ? 'มีสิทธิ์สอบ (≥ 80%)' : 'ต่ำกว่าเกณฑ์'}
                   </div>
                 </div>
 
-                <div className="bg-amber-50/80 border border-amber-200 p-3 rounded-xl">
-                  <div className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
-                    <Award className="w-4 h-4 text-amber-600" />
-                    คุณลักษณะ & สมรรถนะ
+                <div className="bg-amber-50/90 border border-amber-200 p-2 rounded-lg text-center sm:text-left">
+                  <div className="text-[10px] font-semibold text-amber-800 flex items-center justify-center sm:justify-start gap-1">
+                    <Award className="w-3.5 h-3.5 text-amber-600" />
+                    คุณลักษณะ
                   </div>
-                  <div className="text-base font-bold text-amber-900 mt-2">
+                  <div className="text-sm font-bold text-amber-900 mt-1 truncate">
                     {result.holistic.traitsResult}
                   </div>
-                  <div className="text-[10px] text-amber-700 mt-0.5">
-                    อ่าน คิดวิเคราะห์: {result.holistic.readingWritingResult}
+                  <div className="text-[9.5px] text-amber-700 truncate">
+                    คิดวิเคราะห์: {result.holistic.readingWritingResult}
                   </div>
                 </div>
 
-                <div className="bg-rose-50/80 border border-rose-200 p-3 rounded-xl">
-                  <div className="text-[11px] font-semibold text-rose-800 flex items-center gap-1">
-                    <HeartPulse className="w-4 h-4 text-rose-600" />
-                    ภาวะโภชนาการ (BMI)
+                <div className="bg-rose-50/90 border border-rose-200 p-2 rounded-lg text-center sm:text-left">
+                  <div className="text-[10px] font-semibold text-rose-800 flex items-center justify-center sm:justify-start gap-1">
+                    <HeartPulse className="w-3.5 h-3.5 text-rose-600" />
+                    โภชนาการ
                   </div>
-                  <div className="text-base font-bold text-rose-900 mt-2">
+                  <div className="text-sm font-bold text-rose-900 mt-1 truncate">
                     {result.nutrition.weightForHeight}
                   </div>
-                  <div className="text-[10px] text-rose-700 mt-0.5">
+                  <div className="text-[9.5px] text-rose-700 truncate">
                     ส่วนสูง: {result.nutrition.heightForAge}
                   </div>
                 </div>
               </div>
 
               {/* Subject Academic Performance Table */}
-              <div className="mb-6">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-                  ๑. ผลสัมฤทธิ์ทางการเรียนตามกลุ่มสาระการเรียนรู้
-                </h3>
+              <div className="mb-2.5">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-[11.5px] font-bold text-slate-800 uppercase tracking-wide">
+                    ๑. ผลสัมฤทธิ์ทางการเรียนตามกลุ่มสาระการเรียนรู้
+                  </h3>
+                  <span className="text-[10.5px] text-slate-500">
+                    รวมทั้งสิ้น {result.subjectsWithGrades.length} รายวิชา
+                  </span>
+                </div>
                 <table className="w-full text-left text-xs border border-slate-300">
                   <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
-                    <tr>
-                      <th className="p-2 border-r border-slate-300 w-24 text-center">รหัสวิชา</th>
-                      <th className="p-2 border-r border-slate-300">รายวิชา</th>
-                      <th className="p-2 border-r border-slate-300 text-center w-20">น้ำหนัก (นก.)</th>
-                      <th className="p-2 border-r border-slate-300 text-center w-24">คะแนนรวม (100)</th>
-                      <th className="p-2 border-r border-slate-300 text-center w-24">ระดับผลการเรียน</th>
-                      <th className="p-2 text-center w-20">ผลการตัดสิน</th>
+                    <tr className="print-table-row">
+                      <th className="py-1 px-2 border-r border-slate-300 w-20 text-center">รหัสวิชา</th>
+                      <th className="py-1 px-2 border-r border-slate-300">รายวิชา</th>
+                      <th className="py-1 px-2 border-r border-slate-300 text-center w-20">น้ำหนัก (นก.)</th>
+                      <th className="py-1 px-2 border-r border-slate-300 text-center w-24">คะแนนรวม (100)</th>
+                      <th className="py-1 px-2 border-r border-slate-300 text-center w-24">ระดับผลการเรียน</th>
+                      <th className="py-1 px-2 text-center w-20">ผลการตัดสิน</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -553,15 +677,15 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                       const isPassed = grade !== '-' ? (grade !== '0' && grade !== 'ร' && grade !== 'มส') : null;
 
                       return (
-                        <tr key={subject.id} className="hover:bg-slate-50">
-                          <td className="p-2 text-center font-mono border-r border-slate-300">{subject.code}</td>
-                          <td className="p-2 border-r border-slate-300 font-medium">{subject.name}</td>
-                          <td className="p-2 text-center border-r border-slate-300">{subject.credits}</td>
-                          <td className="p-2 text-center font-bold border-r border-slate-300">
+                        <tr key={subject.id} className="print-table-row hover:bg-slate-50">
+                          <td className="py-1 px-2 text-center font-mono border-r border-slate-300">{subject.code}</td>
+                          <td className="py-1 px-2 border-r border-slate-300 font-medium">{subject.name}</td>
+                          <td className="py-1 px-2 text-center border-r border-slate-300">{subject.credits}</td>
+                          <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
                             {total}
                           </td>
-                          <td className="p-2 text-center font-bold border-r border-slate-300">
-                            <span className={`inline-block px-2.5 py-0.5 rounded text-xs ${
+                          <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs ${
                               grade === '4' ? 'bg-emerald-100 text-emerald-800' :
                               grade === '3.5' || grade === '3' ? 'bg-teal-100 text-teal-800' :
                               grade === '2.5' || grade === '2' ? 'bg-blue-100 text-blue-800' :
@@ -571,7 +695,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                               {grade}
                             </span>
                           </td>
-                          <td className="p-2 text-center font-semibold">
+                          <td className="py-1 px-2 text-center font-semibold">
                             {isPassed === true && <span className="text-emerald-700">ผ่าน</span>}
                             {isPassed === false && <span className="text-rose-700">ไม่ผ่าน</span>}
                             {isPassed === null && <span className="text-slate-400">-</span>}
@@ -583,17 +707,43 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                 </table>
               </div>
 
-              {/* Signatures & Certification */}
-              <div className="pt-6 border-t border-slate-300 grid grid-cols-2 text-center text-xs text-slate-700">
-                <div>
-                  <div className="h-10"></div>
+              {/* Signatures & Certification (Strict Single-Page Placement) */}
+              <div className="pt-2 border-t border-slate-300 grid grid-cols-2 text-center text-xs text-slate-800 break-inside-avoid">
+                {/* ครูประจำชั้น */}
+                <div className="flex flex-col items-center justify-end">
+                  <div className="h-9 flex items-end justify-center pb-1">
+                    {/* เว้นพื้นที่สำหรับลงนามจริง */}
+                  </div>
                   <div>ลงชื่อ..........................................................</div>
-                  <div className="mt-1 font-bold">ครูประจำชั้น</div>
+                  <div className="mt-1 font-bold">
+                    ( {getHomeroomTeacherName(result.classLevel)} )
+                  </div>
+                  <div className="text-[11px] text-slate-600 mt-0.5">
+                    ครูประจำชั้น{getClassDisplayName(result.classLevel)}
+                  </div>
                 </div>
-                <div>
-                  <div className="h-10"></div>
+
+                {/* ผู้อำนวยการโรงเรียน */}
+                <div className="flex flex-col items-center justify-end">
+                  <div className="h-9 flex items-center justify-center">
+                    {effectiveDirectorSig ? (
+                      <img
+                        src={effectiveDirectorSig}
+                        alt="ลายมือชื่อผู้อำนวยการ"
+                        className="print-signature-img h-9 max-w-[130px] object-contain mix-blend-multiply"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="h-9"></div>
+                    )}
+                  </div>
                   <div>ลงชื่อ..........................................................</div>
-                  <div className="mt-1 font-bold">ผู้อำนวยการโรงเรียน{schoolName}</div>
+                  <div className="mt-1 font-bold">
+                    ( {effectiveDirectorName} )
+                  </div>
+                  <div className="text-[11px] text-slate-600 mt-0.5">
+                    ผู้อำนวยการโรงเรียน{schoolName}
+                  </div>
                 </div>
               </div>
             </div>

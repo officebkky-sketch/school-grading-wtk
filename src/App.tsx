@@ -576,6 +576,9 @@ export const App: React.FC = () => {
           schoolName={config.schoolName}
           schoolId={config.schoolId}
           logoUrl={schoolLogoUrl}
+          directorName={config.directorName}
+          directorSignatureUrl={directorSignatureUrl}
+          classTeacherMap={classTeacherMap}
           authUser={authUser}
           announcementConfig={announcementConfig}
           onOpenAnnouncementModal={() => setIsAnnouncementModalOpen(true)}
