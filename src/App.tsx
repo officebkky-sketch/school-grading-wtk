@@ -107,7 +107,16 @@ export const App: React.FC = () => {
   });
 
   // Teacher Profiles & Class Mapping
-  const [teachers, setTeachers] = useState<TeacherProfile[]>(DEFAULT_TEACHERS);
+  const [teachers, setTeachers] = useState<TeacherProfile[]>(() => {
+    const saved = localStorage.getItem('pp5_teachers');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return DEFAULT_TEACHERS;
+  });
   const [currentTeacher, setCurrentTeacher] = useState<TeacherProfile>(() => {
     if (authUser?.teacherProfile) return authUser.teacherProfile;
     const found = DEFAULT_TEACHERS.find(t => t.name === authUser?.displayName);
@@ -252,6 +261,7 @@ export const App: React.FC = () => {
         }
         if (dutyData.teachers && dutyData.teachers.length > 0) {
           setTeachers(dutyData.teachers);
+          localStorage.setItem('pp5_teachers', JSON.stringify(dutyData.teachers));
         }
       }
     });
@@ -269,6 +279,27 @@ export const App: React.FC = () => {
       window.removeEventListener('online', handleOnline);
     };
   }, []);
+
+  const handleRefreshTeachers = async () => {
+    const dutyData = await StudentSyncService.fetchHomeroomAssignmentsFromSupabase();
+    if (dutyData) {
+      if (dutyData.teachers && dutyData.teachers.length > 0) {
+        setTeachers(dutyData.teachers);
+        localStorage.setItem('pp5_teachers', JSON.stringify(dutyData.teachers));
+      }
+      if (dutyData.classTeacherMap && Object.keys(dutyData.classTeacherMap).length > 0) {
+        setClassTeacherMap(prev => ({ ...prev, ...dutyData.classTeacherMap }));
+      }
+      if (dutyData.classTeacherSigMap && Object.keys(dutyData.classTeacherSigMap).length > 0) {
+        setClassTeacherSigMap(prev => ({ ...prev, ...dutyData.classTeacherSigMap }));
+        localStorage.setItem('pp5_class_teacher_sigs', JSON.stringify(dutyData.classTeacherSigMap));
+      }
+      if (dutyData.teacherNameSigMap && Object.keys(dutyData.teacherNameSigMap).length > 0) {
+        setTeacherNameSigMap(prev => ({ ...prev, ...dutyData.teacherNameSigMap }));
+        localStorage.setItem('pp5_teacher_name_sigs', JSON.stringify(dutyData.teacherNameSigMap));
+      }
+    }
+  };
 
   // Scores store: classLevel -> (subjectId -> (studentId -> scoreRecord))
   const [scoresStore, setScoresStore] = useState<Record<string, Record<string, Record<string, StudentScoreRecord>>>>(() => {
@@ -766,6 +797,7 @@ export const App: React.FC = () => {
         onLoginSuccess={handleLoginSuccess}
         currentUser={authUser}
         teachers={teachers}
+        onRefreshTeachers={handleRefreshTeachers}
       />
 
       {/* Teacher Assignment Modal for Academic Head */}

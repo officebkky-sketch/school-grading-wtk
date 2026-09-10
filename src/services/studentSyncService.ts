@@ -505,14 +505,19 @@ export class StudentSyncService {
         .select('*');
       if (tErr) throw tErr;
 
-      // 2. ดึง duties ประเภทครูประจำชั้น
-      const { data: duties, error: dErr } = await supabase
-        .from('teacher_duties')
-        .select('*')
-        .in('duty_type', ['ครูประจำชั้น', 'ครูประจำชั้นหลัก', 'ครูประจำชั้นร่วม', 'ครูพี่เลี้ยง']);
-      if (dErr) throw dErr;
+      // 2. ดึง duties ประเภทครูประจำชั้น (ถ้ามี)
+      let duties: any[] = [];
+      try {
+        const { data: dData } = await supabase
+          .from('teacher_duties')
+          .select('*')
+          .in('duty_type', ['ครูประจำชั้น', 'ครูประจำชั้นหลัก', 'ครูประจำชั้นร่วม', 'ครูพี่เลี้ยง']);
+        if (dData) duties = dData;
+      } catch (dErr) {
+        console.warn('Could not query teacher_duties:', dErr);
+      }
 
-      const dutiesList = duties || [];
+      if (!teacherRows || teacherRows.length === 0) return null;
 
       // 3. ดึงข้อมูลลายเซ็นครู (signature_url) จากตาราง profiles ในระบบหลัก
       let profileRows: any[] = [];
@@ -527,15 +532,18 @@ export class StudentSyncService {
 
       // Helper ค้นหาลายเซ็นของครูจาก profiles
       const findTeacherSignature = (t: any): string => {
+        // 1. เช็คจาก user_id
         if (t.user_id) {
           const matched = profileRows.find(p => p.id === t.user_id && p.signature_url);
           if (matched?.signature_url) return matched.signature_url;
         }
+        // 2. เช็คจาก email
         if (t.email) {
           const emailClean = t.email.toLowerCase().trim();
           const matched = profileRows.find(p => p.email && p.email.toLowerCase().trim() === emailClean && p.signature_url);
           if (matched?.signature_url) return matched.signature_url;
         }
+        // 3. เช็คจากชื่อ-นามสกุล (display_name)
         const tFirst = (t.first_name || '').trim();
         const tLast = (t.last_name || '').trim();
         if (tFirst) {
@@ -553,7 +561,7 @@ export class StudentSyncService {
         const sigUrl = findTeacherSignature(t);
         teacherMap[t.id] = {
           id: t.id,
-          name: `${t.prefix || ''}${t.first_name || ''} ${t.last_name || ''}`.replace(/\s+/g, ' ').trim(),
+          name: `${t.prefix || ''}${t.first_name || ''} ${t.last_name || ''}`.trim(),
           position: t.position || '',
           phone: t.phone || '',
           signatureUrl: sigUrl || undefined
@@ -578,7 +586,7 @@ export class StudentSyncService {
         }
       });
 
-      dutiesList.forEach((d: any) => {
+      duties.forEach((d: any) => {
         const cls = (d.duty_day || '').trim();
         const teacherObj = teacherMap[d.teacher_id];
         const teacherName = teacherObj ? teacherObj.name : '';
@@ -591,7 +599,7 @@ export class StudentSyncService {
           }
 
           // ครูประจำชั้นหลัก เป็นค่า default สำหรับหัวเอกสาร ปพ.
-          if (d.duty_type?.includes('หลัก') || !classTeacherMap[cls]) {
+          if (d.duty_type.includes('หลัก') || !classTeacherMap[cls]) {
             classTeacherMap[cls] = teacherName;
             if (teacherSig) {
               classTeacherSigMap[cls] = teacherSig;
@@ -609,24 +617,26 @@ export class StudentSyncService {
 
       // สร้าง TeacherProfile list สำหรับล็อกอินและแสดงผล
       const teachers: TeacherProfile[] = (teacherRows || []).map((t: any) => {
-        const isDirector = (t.position || '').includes('ผู้อำนวยการ') || (t.position || '').includes('ผอ.') || (t.first_name || '').includes('จันทวรรณ');
-        const isAcademicHead = (t.position || '').includes('วิชาการ') || (t.department || '').includes('วิชาการ') || (t.first_name || '').includes('สุมาวดี');
-        const assigned = (isDirector || isAcademicHead)
+        const isDirector = ((t.position || '').includes('ผู้อำนวยการ') || (t.position || '').includes('ผอ.') || (t.first_name || '').includes('เอกคณิต') || (t.first_name || '').includes('จันทวรรณ')) && !(t.position || '').includes('รอง');
+        const isAcademicHead = (t.position || '').includes('วิชาการ') || (t.first_name || '').includes('วัชรี') || (t.first_name || '').includes('สุมาวดี');
+        const isAdmin = (t.position || '').includes('ธุรการ') || (t.position || '').includes('สารสนเทศ') || (t.first_name || '').includes('อดิศักดิ์') || (t.first_name || '').includes('ไพโรจน์');
+        const hasAllAccess = isDirector || isAcademicHead || isAdmin;
+        const assigned = hasAllAccess 
           ? ['*'] 
           : (teacherClassAssignments[t.id] || []);
         
         return {
           id: t.id,
-          name: `${t.prefix || ''}${t.first_name || ''} ${t.last_name || ''}`.replace(/\s+/g, ' ').trim(),
-          role: isDirector ? 'director' : (isAcademicHead ? 'academic_head' : 'homeroom_teacher'),
-          roleTitle: t.position || (isDirector ? 'ผู้อำนวยการโรงเรียน' : (assigned.length > 0 ? `ครูประจำชั้น ${assigned.join(', ')}` : 'ครูผู้สอน')),
+          name: `${(t.prefix || '').trim()}${(t.first_name || '').trim()} ${(t.last_name || '').trim()}`.replace(/\s+/g, ' ').trim(),
+          role: isDirector ? 'director' : (isAcademicHead || isAdmin ? 'academic_head' : 'homeroom_teacher'),
+          roleTitle: t.position || (isDirector ? 'ผู้อำนวยการโรงเรียน' : (assigned.length > 0 && !hasAllAccess ? `ครูประจำชั้น ${assigned.join(', ')}` : 'ครูผู้สอน')),
           assignedClasses: assigned,
           phoneNumber: t.phone || undefined,
           signatureUrl: findTeacherSignature(t) || undefined
         };
       });
 
-      // นำผู้อำนวยการขึ้นอันดับ 1 ตามด้วยหัวหน้าฝ่ายวิชาการ
+      // นำผู้อำนวยการขึ้นอันดับ 1 ตามด้วยหัวหน้าฝ่ายวิชาการ แล้วตามด้วยครูผู้สอน
       teachers.sort((a, b) => {
         if (a.role === 'director') return -1;
         if (b.role === 'director') return 1;

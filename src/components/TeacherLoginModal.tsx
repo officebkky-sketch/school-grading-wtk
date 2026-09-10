@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { AuthService, AuthenticatedUser, EMAIL_CLASS_MAPPING } from '../services/authService';
 import { DEFAULT_TEACHERS, TeacherProfile } from '../data/teachersData';
-import { Lock, Mail, Key, ShieldCheck, UserCheck, LogIn, AlertCircle, Sparkles, X } from 'lucide-react';
+import { Lock, Mail, Key, ShieldCheck, UserCheck, LogIn, AlertCircle, Sparkles, X, RefreshCw, Check } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface Props {
   onLoginSuccess: (user: AuthenticatedUser) => void;
   currentUser: AuthenticatedUser | null;
   teachers?: TeacherProfile[];
+  onRefreshTeachers?: () => Promise<void>;
 }
 
 export const TeacherLoginModal: React.FC<Props> = ({
@@ -17,12 +18,15 @@ export const TeacherLoginModal: React.FC<Props> = ({
   onClose,
   onLoginSuccess,
   currentUser,
-  teachers
+  teachers,
+  onRefreshTeachers
 }) => {
   const [activeMode, setActiveMode] = useState<'password' | 'quick'>('password');
   const [emailOrUser, setEmailOrUser] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -48,6 +52,21 @@ export const TeacherLoginModal: React.FC<Props> = ({
     }
   };
 
+  const handleRefresh = async () => {
+    if (!onRefreshTeachers) return;
+    setIsRefreshing(true);
+    setRefreshSuccess(false);
+    try {
+      await onRefreshTeachers();
+      setRefreshSuccess(true);
+      setTimeout(() => setRefreshSuccess(false), 3000);
+    } catch (e) {
+      console.warn('Refresh teachers failed:', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleSelectTeacherQuick = (t: TeacherProfile) => {
     const user = AuthService.loginAsTeacher(t);
     onLoginSuccess(user);
@@ -68,12 +87,26 @@ export const TeacherLoginModal: React.FC<Props> = ({
               <p className="text-xs text-emerald-100">ใช้รหัสผ่านชุดเดียวกับระบบบริหารสถานศึกษาหลัก</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-emerald-200 hover:text-white p-1 rounded-lg transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onRefreshTeachers && (
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="text-emerald-200 hover:text-white p-1.5 rounded-lg hover:bg-emerald-800/60 transition disabled:opacity-50 flex items-center gap-1 text-xs"
+                title="ซิงค์ข้อมูลครูที่ลงทะเบียนใหม่จากระบบหลัก"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isRefreshing ? 'กำลังซิงค์...' : refreshSuccess ? 'อัปเดตแล้ว' : 'ซิงค์ข้อมูล'}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-emerald-200 hover:text-white p-1 rounded-lg transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Mode Selector */}
@@ -175,9 +208,23 @@ export const TeacherLoginModal: React.FC<Props> = ({
             </form>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-slate-500 mb-2">
-                เลือกโปรไฟล์ของคุณเพื่อเข้าสู่ห้องเรียนที่รับผิดชอบทันที (เหมาะสำหรับเครื่องที่ทำงานแบบออฟไลน์):
-              </p>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-xs text-slate-500">
+                  เลือกโปรไฟล์ของคุณเพื่อเข้าสู่ห้องเรียนที่รับผิดชอบ:
+                </p>
+                {onRefreshTeachers && (
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition disabled:opacity-50 shrink-0"
+                    title="ดึงรายชื่อครูที่ลงทะเบียนใหม่ในระบบหลักทันที"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshing ? 'กำลังซิงค์...' : refreshSuccess ? 'อัปเดตแล้ว ✓' : 'ซิงค์ครูใหม่'}</span>
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
                 {(teachers && teachers.length > 0 ? teachers : DEFAULT_TEACHERS).map((t) => {
                   const isCurrent = currentUser?.displayName === t.name;
