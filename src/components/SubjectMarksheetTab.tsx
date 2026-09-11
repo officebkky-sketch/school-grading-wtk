@@ -25,7 +25,9 @@ import {
   Download,
   Upload,
   HardDriveDownload,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 interface Props {
@@ -40,6 +42,9 @@ interface Props {
   onUpdateSubject?: (updatedSub: SubjectConfig) => void;
   onDeleteSubject?: (id: string) => void;
   canEdit?: boolean;
+  isTerm1Locked?: boolean;
+  onToggleTerm1Lock?: () => void;
+  canToggleLock?: boolean;
 }
 
 export const SubjectMarksheetTab: React.FC<Props> = ({
@@ -53,7 +58,10 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
   onAddSubject,
   onUpdateSubject,
   onDeleteSubject,
-  canEdit = true
+  canEdit = true,
+  isTerm1Locked = false,
+  onToggleTerm1Lock,
+  canToggleLock = false
 }) => {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(subjects[0]?.id || '');
   
@@ -236,15 +244,20 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
     const effectivePre = updated.cSumPre ?? 0;
     const effectiveMidterm = updated.c5 ?? updated.midterm1 ?? 0;
     const effectivePost = updated.cSumPost ?? 0;
-    const hasFormative = hasPre || (updated.c5 !== null && updated.c5 !== undefined) || hasPost || (existing.formative1 !== null && existing.formative1 !== undefined);
+    const hasTerm1 = hasPre || (updated.c5 !== null && updated.c5 !== undefined);
+    const hasFormative = hasTerm1 || hasPost || (existing.formative1 !== null && existing.formative1 !== undefined);
     updated.cSumFormative = hasFormative ? (effectivePre + effectiveMidterm + effectivePost) : null;
 
-    // 4. รวมคะแนนทั้งหมด (รวมระหว่างภาค + ปลายภาค c10)
+    // 4. ตัดสินผลการเรียนปลายปีตามระเบียบ สพฐ. (หลักสูตรรายปี เต็ม 100)
+    // การคำนวณคะแนนรวมตลอดปี (yearlyTotal) และตัดเกรด (0 - 4) จะคำนวณก็ต่อเมื่อ:
+    // มีคะแนนสอบปลายภาค (c10 หรือ final2) แล้วเท่านั้น
+    // หากยังอยู่ระหว่างภาคเรียนที่ 1 หรือยังไม่ได้สอบปลายภาค ให้แสดงเกรดเป็น '-' (อยู่ระหว่างเรียน)
+    // เพื่อป้องกันไม่ให้นำคะแนนเฉพาะเทอม 1 (เช่น 45/50) ไปตัดเกรดเป็น 0 ก่อนเวลาอันควร
+    const hasFinal = (updated.c10 !== null && updated.c10 !== undefined) || (updated.final2 !== null && updated.final2 !== undefined);
     const effectiveFinal = updated.c10 ?? updated.final2 ?? 0;
-    const hasTotal = hasFormative || (updated.c10 !== null && updated.c10 !== undefined) || (existing.yearlyTotal !== null && existing.yearlyTotal !== undefined);
-    const totalAll = hasTotal ? ((updated.cSumFormative ?? 0) + effectiveFinal) : null;
 
-    if (totalAll !== null) {
+    if (hasFinal && hasFormative) {
+      const totalAll = (updated.cSumFormative ?? 0) + effectiveFinal;
       updated.yearlyTotal = Math.round(totalAll * 100) / 100;
       updated.grade = GradingEngine.calculateGrade(updated.yearlyTotal);
       updated.isPassed = updated.yearlyTotal >= 50;
@@ -543,6 +556,37 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
               <span>ส่งออก SchoolMIS (.csv)</span>
             </button>
 
+            {/* ปุ่มล็อค / ปลดล็อคคะแนนภาคเรียนที่ 1 */}
+            {canToggleLock ? (
+              <button
+                type="button"
+                onClick={onToggleTerm1Lock}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs ${
+                  isTerm1Locked
+                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                }`}
+                title={isTerm1Locked ? 'คลิกเพื่อปลดล็อคให้ครูแก้ไขคะแนนเทอม 1 ได้' : 'คลิกเพื่อล็อคคะแนนเทอม 1 หลังประกาศผลทางการ'}
+              >
+                {isTerm1Locked ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-amber-700" />
+                    <span>เทอม 1: ล็อคแล้ว</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>เทอม 1: ปลดล็อค</span>
+                  </>
+                )}
+              </button>
+            ) : isTerm1Locked ? (
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300" title="คะแนนภาคเรียนที่ 1 ถูกล็อคหลังประกาศผลทางการแล้ว">
+                <Lock className="w-3.5 h-3.5 text-amber-700" />
+                <span>เทอม 1: ล็อคแล้ว</span>
+              </div>
+            ) : null}
+
             {/* Auto-saved badge */}
             <div className="flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -563,13 +607,13 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                   <th rowSpan={2} className="px-3 py-2 text-left min-w-[90px] border border-slate-300 font-bold bg-[#f8f9fa]">ชื่อ</th>
                   <th rowSpan={2} className="px-3 py-2 text-left min-w-[90px] border border-slate-300 font-bold bg-[#f8f9fa]">นามสกุล</th>
                   <th colSpan={5} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
-                    คะแนนก่อนกลางภาค(ปี)
+                    คะแนนก่อนกลางภาค(ปี) {isTerm1Locked && <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded ml-1 font-bold">🔒 ล็อค</span>}
                   </th>
                   <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
-                    คะแนนกลางภาค(ปี)
+                    คะแนนกลางภาค(ปี) {isTerm1Locked && <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded ml-1 font-bold">🔒</span>}
                   </th>
                   <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
-                    แก้ตัวกลางภาค(ปี)
+                    แก้ตัวกลางภาค(ปี) {isTerm1Locked && <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded ml-1 font-bold">🔒</span>}
                   </th>
                   <th colSpan={5} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
                     คะแนนหลังกลางภาค(ปี)
@@ -763,11 +807,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={10}
-                          disabled={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
                           value={rec.c1 ?? ''}
                           placeholder="0"
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c1', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            isTerm1Locked
+                              ? 'bg-amber-50/50 border-amber-200 text-slate-500 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* c2 */}
@@ -776,11 +825,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={10}
-                          disabled={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
                           value={rec.c2 ?? ''}
                           placeholder="0"
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c2', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            isTerm1Locked
+                              ? 'bg-amber-50/50 border-amber-200 text-slate-500 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* c3 */}
@@ -789,11 +843,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={10}
-                          disabled={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
                           value={rec.c3 ?? ''}
                           placeholder="0"
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c3', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            isTerm1Locked
+                              ? 'bg-amber-50/50 border-amber-200 text-slate-500 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* c4 */}
@@ -802,11 +861,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={5}
-                          disabled={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
                           value={rec.c4 ?? ''}
                           placeholder="0"
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c4', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            isTerm1Locked
+                              ? 'bg-amber-50/50 border-amber-200 text-slate-500 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* รวมก่อนกลาง */}
@@ -822,11 +886,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={15}
-                          disabled={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
                           value={rec.c5 ?? rec.midterm1 ?? ''}
                           placeholder="0"
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c5', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            isTerm1Locked
+                              ? 'bg-amber-50/50 border-amber-200 text-slate-500 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* แก้ตัวกลางภาค */}
@@ -835,11 +904,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={15}
-                          disabled={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
                           value={rec.cRetakeMidterm ?? ''}
                           placeholder="0"
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'cRetakeMidterm', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            isTerm1Locked
+                              ? 'bg-amber-50/50 border-amber-200 text-slate-500 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
 

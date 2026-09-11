@@ -39,6 +39,7 @@ interface Props {
   directorSignatureUrl?: string;
   homeroomTeacherSignatureUrl?: string;
   academicSignatureUrl?: string;
+  academicHeadName?: string;
 }
 
 export const PrintableStudioTab: React.FC<Props> = ({
@@ -46,12 +47,13 @@ export const PrintableStudioTab: React.FC<Props> = ({
   subjects,
   scores,
   config,
-  logoUrl = 'https://vzrrpxrmtjpgfbbvhjra.supabase.co/storage/v1/object/public/system/school_logo_1779071201388.png',
+  logoUrl = 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/school_logo_1779784358658.jpg',
   attendanceData = {},
   holisticData = {},
-  directorSignatureUrl = 'https://vzrrpxrmtjpgfbbvhjra.supabase.co/storage/v1/object/public/system/director_sig_1778032124756.png',
+  directorSignatureUrl = 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/director_sig_1779943287141.png',
   homeroomTeacherSignatureUrl = '',
-  academicSignatureUrl = 'https://vzrrpxrmtjpgfbbvhjra.supabase.co/storage/v1/object/public/system/user_sig_181e17f2-e998-4c9f-a3e0-6f1334a8f7cb_1778037929138.png'
+  academicSignatureUrl = '',
+  academicHeadName = ''
 }) => {
   const [printMode, setPrintMode] = useState<PrintDocumentMode>('pp6');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('ALL'); // Default 'ALL' เพื่อความสะดวกในการพิมพ์ทั้งห้อง
@@ -378,29 +380,81 @@ export const PrintableStudioTab: React.FC<Props> = ({
 
           {/* Holistic & Telemetry Block */}
           <div className="grid grid-cols-2 gap-4 text-xs">
-            {/* Character & Competencies */}
-            <div className="border border-slate-300 rounded p-3 bg-slate-50/50">
-              <div className="font-bold text-slate-800 mb-2">2. ผลการประเมินด้านอื่นๆ</div>
-              <div className="space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">• คุณลักษณะอันพึงประสงค์ (8 ประการ):</span>
-                  <strong className="text-emerald-700">{getScoreLevelText(hol.traitsScore)}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">• สมรรถนะสำคัญของผู้เรียน (5 ด้าน):</span>
-                  <strong className="text-emerald-700">{getScoreLevelText(hol.competencyScore)}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">• การอ่าน คิดวิเคราะห์ และเขียน:</span>
-                  <strong className="text-emerald-700">{hol.readingWriting || 'ดีเยี่ยม'}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">• กิจกรรมพัฒนาผู้เรียน:</span>
-                  <strong className={hol.activityPassed ? "text-emerald-700" : "text-rose-600"}>
-                    {hol.activityPassed ? 'ผ่าน (ผ)' : 'ไม่ผ่าน (มผ)'}
-                  </strong>
+            {/* Character & Competencies & Learner Activities */}
+            <div className="border border-slate-300 rounded p-2.5 bg-slate-50/50 space-y-2">
+              <div>
+                <div className="font-bold text-slate-800 mb-1">2. ผลการประเมินด้านอื่นๆ</div>
+                <div className="grid grid-cols-3 gap-1 text-[11px] bg-white p-1.5 rounded border border-slate-200">
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">คุณลักษณะอันพึงประสงค์</span>
+                    <strong className="text-emerald-700">{getScoreLevelText(hol.traitsScore)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">สมรรถนะสำคัญ</span>
+                    <strong className="text-emerald-700">{getScoreLevelText(hol.competencyScore)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">อ่าน คิดวิเคราะห์ เขียน</span>
+                    <strong className="text-emerald-700">{hol.readingWriting || 'ดีเยี่ยม'}</strong>
+                  </div>
                 </div>
               </div>
+
+              {/* 4 Learner Activities Table (ตรงกับ ปพ.1 ในสกรีนช็อต 100%) */}
+              {(() => {
+                const act = hol.activities || {
+                  guidanceHours: 40,
+                  guidanceResult: 'ผ',
+                  scoutHours: 40,
+                  scoutResult: 'ผ',
+                  clubName: config.clubNameMap?.[config.classLevel] || (config.classLevel === 'ป.6' ? 'ชุมนุมสื่อ AI สร้างสรรค์' : 'ชุมนุมศิลป์สร้างสรรค์'),
+                  clubHours: 30,
+                  clubResult: 'ผ',
+                  publicServiceHours: 10,
+                  publicServiceResult: 'ผ'
+                };
+                return (
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-slate-800 text-[11px]">ผลการประเมินกิจกรรมพัฒนาผู้เรียน (120 ชม./ปี)</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${hol.activityPassed ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300'}`}>
+                        {hol.activityPassed ? 'ผ่านเกณฑ์ (ผ)' : 'ไม่ผ่าน (มผ)'}
+                      </span>
+                    </div>
+                    <table className="w-full text-[10.5px] border border-slate-300 border-collapse bg-white">
+                      <thead className="bg-slate-100 font-semibold text-slate-700">
+                        <tr>
+                          <th className="p-0.5 px-1.5 border border-slate-300 text-left">กิจกรรม</th>
+                          <th className="p-0.5 border border-slate-300 text-center w-14">เวลา (ชม.)</th>
+                          <th className="p-0.5 border border-slate-300 text-center w-16">ผลประเมิน</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        <tr>
+                          <td className="p-0.5 px-1.5 border border-slate-300">1. กิจกรรมแนะแนว</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-mono">{act.guidanceHours || 40}</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-bold text-emerald-700">{act.guidanceResult || 'ผ'}</td>
+                        </tr>
+                        <tr>
+                          <td className="p-0.5 px-1.5 border border-slate-300">2. ลูกเสือ เนตรนารี</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-mono">{act.scoutHours || 40}</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-bold text-emerald-700">{act.scoutResult || 'ผ'}</td>
+                        </tr>
+                        <tr>
+                          <td className="p-0.5 px-1.5 border border-slate-300">3. {act.clubName || config.clubNameMap?.[config.classLevel] || 'กิจกรรมชุมนุม'}</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-mono">{act.clubHours || 30}</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-bold text-emerald-700">{act.clubResult || 'ผ'}</td>
+                        </tr>
+                        <tr>
+                          <td className="p-0.5 px-1.5 border border-slate-300">4. กิจกรรมเพื่อสังคมและสาธารณประโยชน์</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-mono">{act.publicServiceHours || 10}</td>
+                          <td className="p-0.5 border border-slate-300 text-center font-bold text-emerald-700">{act.publicServiceResult || 'ผ'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Attendance & Health */}
@@ -768,7 +822,7 @@ export const PrintableStudioTab: React.FC<Props> = ({
                 <div>
                   {renderSignatureImg(academicSignatureUrl, "h-6")}
                   <div>ลงชื่อ...................................................... หัวหน้าฝ่ายวิชาการ</div>
-                  <div className="font-semibold mt-0.5">(นางสุมาวดี สมบูรณ์)</div>
+                  <div className="font-semibold mt-0.5">({academicHeadName || config.academicHead || 'นางสุมาวดี สมบูรณ์'})</div>
                 </div>
                 <div>
                   {renderSignatureImg(directorSignatureUrl, "h-6")}

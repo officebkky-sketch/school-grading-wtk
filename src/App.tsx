@@ -216,6 +216,55 @@ export const App: React.FC = () => {
     };
   });
 
+  // สถานะล็อคคะแนนภาคเรียนที่ 1 หลังประกาศผลทางการ
+  const [isTerm1Locked, setIsTerm1Locked] = useState<boolean>(() => {
+    const saved = localStorage.getItem('pp5_term1_locked');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const handleToggleTerm1Lock = () => {
+    setIsTerm1Locked(prev => {
+      const next = !prev;
+      localStorage.setItem('pp5_term1_locked', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // ชื่อชุมนุมประจำระดับชั้น (สำหรับกิจกรรมพัฒนาผู้เรียน ตาม ปพ.1)
+  const DEFAULT_CLUB_NAMES: Record<string, string> = {
+    'ป.1': 'ชุมนุมศิลป์สร้างสรรค์',
+    'ป.2': 'ชุมนุมนิทานหรรษา',
+    'ป.3': 'ชุมนุมภาษาพาสนุก',
+    'ป.4': 'ชุมนุมหุ่นยนต์และวิทยาศาสตร์',
+    'ป.5': 'ชุมนุมรักสิ่งแวดล้อม',
+    'ป.6': 'ชุมนุมสื่อ AI สร้างสรรค์',
+    'อ.2': 'กิจกรรมเสริมสร้างพัฒนาการ',
+    'อ.3': 'กิจกรรมเตรียมความพร้อม'
+  };
+  const [clubNameMap, setClubNameMap] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('pp5_club_names');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_CLUB_NAMES;
+  });
+  const handleUpdateClubName = (cls: string, name: string) => {
+    setClubNameMap(prev => {
+      const updated = { ...prev, [cls]: name };
+      localStorage.setItem('pp5_club_names', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // ดึงข้อมูลและลายเซ็นของหัวหน้าฝ่ายวิชาการแบบไดนามิก
+  const academicTeacher = teachers.find(t => t.role === 'academic_head' && t.name.includes('สุมาวดี')) || 
+                          teachers.find(t => t.role === 'academic_head') || 
+                          DEFAULT_TEACHERS.find(t => t.role === 'academic_head');
+  const academicHeadName = config.academicHead || academicTeacher?.name || 'นางสุมาวดี สมบูรณ์';
+  const academicSignatureUrl = academicTeacher?.signatureUrl || 
+                              teacherNameSigMap[academicHeadName] || 
+                              teacherNameSigMap['นางสุมาวดี สมบูรณ์'] || 
+                              '';
+
   // Fetch active students & homeroom assignments & school branding from Supabase (ระบบหลัก) on initial load
   useEffect(() => {
     StudentSyncService.fetchSchoolSettingsFromSupabase().then((settingsData) => {
@@ -480,6 +529,7 @@ export const App: React.FC = () => {
   const canEditClass =
     !authUser ||
     authUser.role === 'admin' ||
+    authUser.role === 'director' ||
     authUser.role === 'academic_head' ||
     authUser.assignedClasses.includes('*') ||
     authUser.assignedClasses.includes(config.classLevel);
@@ -917,12 +967,24 @@ export const App: React.FC = () => {
             scores={currentClassScores}
             onUpdateScore={handleUpdateScore}
             semester={config.semester}
-            config={config}
+            config={{
+              ...config,
+              term1Locked: isTerm1Locked,
+              clubNameMap,
+              academicHead: academicHeadName
+            }}
             teacherName={authUser?.displayName || config.homeroomTeacher}
             onAddSubject={handleAddSubject}
             onUpdateSubject={handleUpdateSubject}
             onDeleteSubject={handleDeleteSubject}
             canEdit={canEditClass}
+            isTerm1Locked={isTerm1Locked}
+            onToggleTerm1Lock={handleToggleTerm1Lock}
+            canToggleLock={
+              authUser?.role === 'director' ||
+              authUser?.role === 'academic_head' ||
+              authUser?.role === 'admin'
+            }
           />
         )}
 
@@ -965,6 +1027,8 @@ export const App: React.FC = () => {
             holisticData={holisticStore[config.classLevel] || {}}
             onUpdateHolistic={handleUpdateHolistic}
             onBulkUpdateHolistic={handleBulkUpdateHolistic}
+            clubName={clubNameMap[config.classLevel] || ''}
+            onUpdateClubName={handleUpdateClubName}
           />
         )}
 
@@ -973,7 +1037,12 @@ export const App: React.FC = () => {
             students={currentStudents}
             subjects={currentSubjects}
             scores={currentClassScores}
-            config={config}
+            config={{
+              ...config,
+              term1Locked: isTerm1Locked,
+              clubNameMap,
+              academicHead: academicHeadName
+            }}
             logoUrl={schoolLogoUrl}
             directorSignatureUrl={directorSignatureUrl}
             homeroomTeacherSignatureUrl={
@@ -982,6 +1051,8 @@ export const App: React.FC = () => {
               authUser?.signatureUrl ||
               ''
             }
+            academicHeadName={academicHeadName}
+            academicSignatureUrl={academicSignatureUrl}
             attendanceData={attendanceStore[config.classLevel] || {}}
             holisticData={holisticStore[config.classLevel] || {}}
           />

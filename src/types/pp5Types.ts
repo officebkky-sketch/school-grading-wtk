@@ -13,6 +13,9 @@ export interface AcademicConfig {
   room: number;
   totalSchoolDaysSemester1: number;
   totalSchoolDaysSemester2: number;
+  academicHead?: string; // ชื่อหัวหน้าฝ่ายวิชาการ
+  term1Locked?: boolean; // ล็อคคะแนนภาคเรียนที่ 1 เมื่อประกาศผลทางการแล้ว
+  clubNameMap?: Record<string, string>; // แมปชื่อชุมนุมตามระดับชั้น เช่น {'ป.1': 'ชุมนุมศิลป์สร้างสรรค์', 'ป.6': 'ชุมนุมสื่อ AI สร้างสรรค์'}
 }
 
 export interface StudentProfile {
@@ -118,11 +121,24 @@ export interface AttendanceDetail {
   absent: number;
 }
 
+export interface LearnerActivityRecord {
+  guidanceHours?: number;         // กิจกรรมแนะแนว (ชั่วโมง: 40)
+  guidanceResult?: 'ผ' | 'มผ';    // ผลประเมินแนะแนว
+  scoutHours?: number;            // ลูกเสือ เนตรนารี (ชั่วโมง: 40)
+  scoutResult?: 'ผ' | 'มผ';       // ผลประเมินลูกเสือ
+  clubName?: string;              // ชื่อชุมนุมประจำชั้น (เช่น ชุมนุมศิลป์สร้างสรรค์, ชุมนุมสื่อ AI สร้างสรรค์)
+  clubHours?: number;             // ชุมนุม (ชั่วโมง: 30 หรือ 40)
+  clubResult?: 'ผ' | 'มผ';        // ผลประเมินชุมนุม
+  publicServiceHours?: number;    // กิจกรรมเพื่อสังคมและสาธารณประโยชน์ (ชั่วโมง: 10)
+  publicServiceResult?: 'ผ' | 'มผ'; // ผลประเมินเพื่อสังคมและสาธารณประโยชน์
+}
+
 export interface HolisticDetail {
   traitsScore: number;       // 0-3
   competencyScore: number;   // 0-3
   readingWriting: 'ดีเยี่ยม' | 'ดี' | 'ผ่าน' | 'ไม่ผ่าน';
   activityPassed: boolean;
+  activities?: LearnerActivityRecord; // กิจกรรมพัฒนาผู้เรียน 4 กิจกรรม (ตาม ปพ.1/ปพ.5/ปพ.6)
 }
 
 export type PrintDocumentMode = 
