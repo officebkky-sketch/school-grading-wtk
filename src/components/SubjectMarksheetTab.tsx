@@ -556,7 +556,7 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
               <span>ส่งออก SchoolMIS (.csv)</span>
             </button>
 
-            {/* ปุ่มล็อค / ปลดล็อคคะแนนภาคเรียนที่ 1 */}
+            {/* ปุ่มล็อค / ปปลดล็อคคะแนนภาคเรียนที่ 1 */}
             {canToggleLock ? (
               <button
                 type="button"
@@ -587,6 +587,20 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
               </div>
             ) : null}
 
+            {/* Semester Indicator Badge */}
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold">
+              <span>ภาคเรียนที่ {semester}</span>
+              {semester === 1 ? (
+                <span className="text-[11px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                  🔒 คะแนนหลังกลางภาค/ปลายภาคจะเปิดให้กรอกในเทอม 2
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                  เปิดกรอกครบทุกช่อง
+                </span>
+              )}
+            </div>
+
             {/* Auto-saved badge */}
             <div className="flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -616,13 +630,13 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                     แก้ตัวกลางภาค(ปี) {isTerm1Locked && <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded ml-1 font-bold">🔒</span>}
                   </th>
                   <th colSpan={5} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
-                    คะแนนหลังกลางภาค(ปี)
+                    คะแนนหลังกลางภาค(ปี) {semester === 1 && <span className="text-[10px] text-slate-500 bg-slate-200 border border-slate-300 px-1 py-0.5 rounded ml-1 font-semibold">🔒 เปิดเทอม 2</span>}
                   </th>
                   <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
                     รวมระหว่างภาค(ปี)
                   </th>
                   <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
-                    คะแนนปลายภาค(ปี)
+                    คะแนนปลายภาค(ปี) {semester === 1 && <span className="text-[10px] text-slate-500 bg-slate-200 border border-slate-300 px-1 py-0.5 rounded ml-1 font-semibold">🔒 เปิดเทอม 2</span>}
                   </th>
                   <th colSpan={1} className="px-2 py-1.5 text-center font-bold border border-slate-300 bg-[#f8f9fa]">
                     รวมคะแนนทั้งหมด
@@ -923,11 +937,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={10}
-                          disabled={!canEdit}
+                          disabled={!canEdit || semester === 1}
                           value={rec.c6 ?? ''}
-                          placeholder="0"
+                          placeholder={semester === 1 ? "-" : "0"}
+                          title={semester === 1 ? "คะแนนหลังกลางภาคจะเปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c6', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            semester === 1
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* c7 */}
@@ -936,11 +955,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={10}
-                          disabled={!canEdit}
+                          disabled={!canEdit || semester === 1}
                           value={rec.c7 ?? ''}
-                          placeholder="0"
+                          placeholder={semester === 1 ? "-" : "0"}
+                          title={semester === 1 ? "คะแนนหลังกลางภาคจะเปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c7', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            semester === 1
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* c8 */}
@@ -949,16 +973,23 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={15}
-                          disabled={!canEdit}
+                          disabled={!canEdit || semester === 1}
                           value={rec.c8 ?? ''}
-                          placeholder="0"
+                          placeholder={semester === 1 ? "-" : "0"}
+                          title={semester === 1 ? "คะแนนหลังกลางภาคจะเปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c8', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            semester === 1
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
                       {/* c9 */}
                       <td className="p-1 border border-slate-300">
-                        <div className="w-full py-1 bg-white border border-slate-300 rounded text-center text-slate-400 min-h-[26px]"></div>
+                        <div className={`w-full py-1 border rounded text-center min-h-[26px] ${
+                          semester === 1 ? 'bg-slate-100 border-slate-200 text-slate-400' : 'bg-white border-slate-300 text-slate-400'
+                        }`}>-</div>
                       </td>
                       {/* รวมหลังกลาง */}
                       <td className="p-1 border border-slate-300 text-center">
@@ -980,11 +1011,16 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           type="number"
                           min={0}
                           max={15}
-                          disabled={!canEdit}
+                          disabled={!canEdit || semester === 1}
                           value={rec.c10 ?? rec.final2 ?? ''}
-                          placeholder="0"
+                          placeholder={semester === 1 ? "-" : "0"}
+                          title={semester === 1 ? "คะแนนปลายภาคจะเปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleSchoolMisScoreChange(s.studentId, 'c10', e.target.value)}
-                          className="w-full text-center py-1 bg-white border border-slate-300 rounded font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          className={`w-full text-center py-1 border rounded font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                            semester === 1
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         />
                       </td>
 
@@ -1076,14 +1112,15 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           min={0}
                           max={30}
                           placeholder="-"
-                          disabled={!canEdit}
-                          readOnly={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
+                          readOnly={!canEdit || isTerm1Locked}
                           value={rec.formative1 ?? ''}
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleScoreChange(s.studentId, 'formative1', e.target.value)}
                           className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                            canEdit
+                            canEdit && !isTerm1Locked
                               ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
-                              : 'cursor-not-allowed opacity-75'
+                              : 'cursor-not-allowed opacity-75 bg-amber-50/40'
                           }`}
                         />
                       </td>
@@ -1093,14 +1130,15 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           min={0}
                           max={10}
                           placeholder="-"
-                          disabled={!canEdit}
-                          readOnly={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
+                          readOnly={!canEdit || isTerm1Locked}
                           value={rec.midterm1 ?? ''}
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleScoreChange(s.studentId, 'midterm1', e.target.value)}
                           className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                            canEdit
+                            canEdit && !isTerm1Locked
                               ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
-                              : 'cursor-not-allowed opacity-75'
+                              : 'cursor-not-allowed opacity-75 bg-amber-50/40'
                           }`}
                         />
                       </td>
@@ -1110,14 +1148,15 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           min={0}
                           max={10}
                           placeholder="-"
-                          disabled={!canEdit}
-                          readOnly={!canEdit}
+                          disabled={!canEdit || isTerm1Locked}
+                          readOnly={!canEdit || isTerm1Locked}
                           value={rec.final1 ?? ''}
+                          title={isTerm1Locked ? "ภาคเรียนที่ 1 ล็อคแล้ว" : ""}
                           onChange={(e) => handleScoreChange(s.studentId, 'final1', e.target.value)}
                           className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                            canEdit
+                            canEdit && !isTerm1Locked
                               ? 'hover:bg-blue-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-text'
-                              : 'cursor-not-allowed opacity-75'
+                              : 'cursor-not-allowed opacity-75 bg-amber-50/40'
                           }`}
                         />
                       </td>
@@ -1132,14 +1171,15 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           min={0}
                           max={30}
                           placeholder="-"
-                          disabled={!canEdit}
-                          readOnly={!canEdit}
+                          disabled={!canEdit || semester === 1}
+                          readOnly={!canEdit || semester === 1}
                           value={rec.formative2 ?? ''}
+                          title={semester === 1 ? "เปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleScoreChange(s.studentId, 'formative2', e.target.value)}
                           className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                            canEdit
+                            canEdit && semester === 2
                               ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
-                              : 'cursor-not-allowed opacity-75'
+                              : 'cursor-not-allowed opacity-75 bg-slate-100'
                           }`}
                         />
                       </td>
@@ -1149,14 +1189,15 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           min={0}
                           max={10}
                           placeholder="-"
-                          disabled={!canEdit}
-                          readOnly={!canEdit}
+                          disabled={!canEdit || semester === 1}
+                          readOnly={!canEdit || semester === 1}
                           value={rec.midterm2 ?? ''}
+                          title={semester === 1 ? "เปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleScoreChange(s.studentId, 'midterm2', e.target.value)}
                           className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                            canEdit
+                            canEdit && semester === 2
                               ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
-                              : 'cursor-not-allowed opacity-75'
+                              : 'cursor-not-allowed opacity-75 bg-slate-100'
                           }`}
                         />
                       </td>
@@ -1166,14 +1207,15 @@ export const SubjectMarksheetTab: React.FC<Props> = ({
                           min={0}
                           max={10}
                           placeholder="-"
-                          disabled={!canEdit}
-                          readOnly={!canEdit}
+                          disabled={!canEdit || semester === 1}
+                          readOnly={!canEdit || semester === 1}
                           value={rec.final2 ?? ''}
+                          title={semester === 1 ? "เปิดให้กรอกในภาคเรียนที่ 2" : ""}
                           onChange={(e) => handleScoreChange(s.studentId, 'final2', e.target.value)}
                           className={`w-full text-center py-1 bg-transparent rounded font-semibold text-slate-800 ${
-                            canEdit
+                            canEdit && semester === 2
                               ? 'hover:bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-text'
-                              : 'cursor-not-allowed opacity-75'
+                              : 'cursor-not-allowed opacity-75 bg-slate-100'
                           }`}
                         />
                       </td>
