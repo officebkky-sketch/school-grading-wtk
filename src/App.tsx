@@ -1221,6 +1221,8 @@ export const App: React.FC = () => {
               authUser?.signatureUrl ||
               ''
             }
+            attendanceData={attendanceStore[config.classLevel] || {}}
+            totalSchoolDays={config.semester === 1 ? config.totalSchoolDaysSemester1 : config.totalSchoolDaysSemester2}
           />
         )}
       </main>

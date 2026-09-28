@@ -38,6 +38,7 @@ interface Props {
   homeroomTeacherName?: string;
   homeroomTeacherSignatureUrl?: string;
   attendanceData?: Record<string, any>;
+  totalSchoolDays?: number;
 }
 
 export const KindergartenPrintableTab: React.FC<Props> = ({
@@ -47,11 +48,12 @@ export const KindergartenPrintableTab: React.FC<Props> = ({
   semester,
   assessments,
   logoUrl,
-  directorName = 'นายเอกคณิต สิทธิศักดิ์',
+  directorName = 'นางจันทวรรณ พิทักษ์ฉนวน',
   directorSignatureUrl,
-  homeroomTeacherName = 'นางสาวณัฐหทัย สงแสง',
+  homeroomTeacherName = 'ครูประจำชั้น',
   homeroomTeacherSignatureUrl,
-  attendanceData = {}
+  attendanceData = {},
+  totalSchoolDays
 }) => {
   const [selectedStudentIndex, setSelectedStudentIndex] = useState<number>(0);
   const [printMode, setPrintMode] = useState<'single' | 'batch'>('single');
@@ -103,13 +105,36 @@ export const KindergartenPrintableTab: React.FC<Props> = ({
     const height = student.height || assessment.healthInfo?.height || 0;
     const growthEval = GrowthEngine.evaluateGrowth(student.gender, realAge, weight, height);
 
-    // เวลาเรียน
-    const attRec = attendanceData[student.studentId] || assessment.attendance;
-    const totalDays = attRec?.totalDays || 100;
-    const presentDays = attRec?.present || attRec?.presentDays || 98;
-    const leaveDays = attRec?.leave || attRec?.leaveDays || 1;
-    const sickDays = attRec?.sick || attRec?.sickDays || 1;
-    const attPercent = totalDays > 0 ? Math.round((presentDays / totalDays) * 1000) / 10 : 98.0;
+    // เวลาเรียน (ดึงจาก attendanceData เป็นหลัก)
+    const rawAtt = attendanceData[student.studentId] || attendanceData[student.id];
+    const attRec = rawAtt || assessment.attendance;
+    const totalDays = totalSchoolDays || attRec?.totalDays || 100;
+
+    let presentDays = 0;
+    let leaveDays = 0;
+    let sickDays = 0;
+    let absentDays = 0;
+
+    if (rawAtt) {
+      presentDays = rawAtt.present !== undefined ? Number(rawAtt.present) : (rawAtt.presentDays !== undefined ? Number(rawAtt.presentDays) : Math.max(0, totalDays - 2));
+      leaveDays = rawAtt.leave !== undefined ? Number(rawAtt.leave) : (rawAtt.leaveDays !== undefined ? Number(rawAtt.leaveDays) : 1);
+      sickDays = rawAtt.sick !== undefined ? Number(rawAtt.sick) : (rawAtt.sickDays !== undefined ? Number(rawAtt.sickDays) : 1);
+      absentDays = rawAtt.absent !== undefined ? Number(rawAtt.absent) : (rawAtt.absentDays !== undefined ? Number(rawAtt.absentDays) : 0);
+    } else if (attRec) {
+      presentDays = attRec.presentDays !== undefined ? Number(attRec.presentDays) : (attRec.present !== undefined ? Number(attRec.present) : Math.max(0, totalDays - 2));
+      leaveDays = attRec.leaveDays !== undefined ? Number(attRec.leaveDays) : (attRec.leave !== undefined ? Number(attRec.leave) : 1);
+      sickDays = attRec.sickDays !== undefined ? Number(attRec.sickDays) : (attRec.sick !== undefined ? Number(attRec.sick) : 1);
+      absentDays = attRec.absentDays !== undefined ? Number(attRec.absentDays) : (attRec.absent !== undefined ? Number(attRec.absent) : 0);
+    } else {
+      presentDays = Math.max(0, totalDays - 2);
+      leaveDays = 1;
+      sickDays = 1;
+      absentDays = 0;
+    }
+
+    const totalLeaveAndSick = leaveDays + sickDays;
+    const attPercent = totalDays > 0 ? Math.round((presentDays / totalDays) * 1000) / 10 : 0;
+    const isAttPass = attPercent >= 80;
 
     // คำนวณสรุปรายด้าน
     const sideSummaries = KINDERGARTEN_SIDES.map(side => {
@@ -365,11 +390,11 @@ export const KindergartenPrintableTab: React.FC<Props> = ({
             </div>
             <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-700 pt-0.5">
               <div>วันเปิดเรียน: <strong className="text-slate-900">{toThaiNum(totalDays)}</strong> วัน</div>
-              <div>มาเรียน: <strong className="text-emerald-700">{toThaiNum(presentDays)}</strong> วัน</div>
-              <div>ลาป่วย/ลากิจ: <strong className="text-slate-900">{toThaiNum(leaveDays + sickDays)}</strong> วัน</div>
-              <div>คิดเป็นร้อยละ: <strong className="text-emerald-700">{toThaiNum(attPercent)}%</strong></div>
-              <div className="col-span-2 pt-0.5 text-emerald-800 font-bold">
-                ✓ เวลาเรียนครบถ้วนตามเกณฑ์หลักสูตรปฐมวัย
+              <div>มาเรียน: <strong className={isAttPass ? "text-emerald-700" : "text-rose-700"}>{toThaiNum(presentDays)}</strong> วัน</div>
+              <div>ลาป่วย/ลากิจ: <strong className="text-slate-900">{toThaiNum(totalLeaveAndSick)}</strong> วัน</div>
+              <div>คิดเป็นร้อยละ: <strong className={isAttPass ? "text-emerald-700" : "text-rose-700"}>{toThaiNum(attPercent)}%</strong></div>
+              <div className={`col-span-2 pt-0.5 font-bold ${isAttPass ? "text-emerald-800" : "text-rose-700"}`}>
+                {isAttPass ? '✓ เวลาเรียนครบถ้วนตามเกณฑ์หลักสูตรปฐมวัย (≥ ๘๐%)' : '✗ เวลาเรียนไม่เป็นไปตามเกณฑ์ (< ๘๐%)'}
               </div>
             </div>
           </div>
