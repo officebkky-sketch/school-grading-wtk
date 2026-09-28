@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Cloud, CloudUpload, CheckCircle2, AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { CloudSyncEngine, SyncResult } from '../services/syncService';
 import { StudentProfile, SubjectConfig, StudentScoreRecord, AcademicConfig } from '../types/pp5Types';
+import { KindergartenStudentAssessment } from '../types/kindergartenTypes';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
   scores: Record<string, Record<string, StudentScoreRecord>>;
   config: AcademicConfig;
   canSync: boolean;
+  kindergartenAssessments?: Record<string, KindergartenStudentAssessment>;
 }
 
 export const CloudSyncBar: React.FC<Props> = ({
@@ -20,7 +22,8 @@ export const CloudSyncBar: React.FC<Props> = ({
   students,
   scores,
   config,
-  canSync
+  canSync,
+  kindergartenAssessments
 }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(() => {
@@ -41,13 +44,22 @@ export const CloudSyncBar: React.FC<Props> = ({
     setIsSyncing(true);
     setNotification(null);
 
-    const result = await CloudSyncEngine.syncClassToCloud(
-      classLevel,
-      subjects,
-      students,
-      scores,
-      config
-    );
+    const result = classLevel.startsWith('อ.')
+      ? await CloudSyncEngine.syncKindergartenClassToCloud(
+          classLevel,
+          config.academicYear,
+          config.semester,
+          students,
+          kindergartenAssessments || {},
+          config
+        )
+      : await CloudSyncEngine.syncClassToCloud(
+          classLevel,
+          subjects,
+          students,
+          scores,
+          config
+        );
 
     setIsSyncing(false);
     setLastSyncResult(result);

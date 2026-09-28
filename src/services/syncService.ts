@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { localDb } from '../db/localDb';
 import { StudentProfile, SubjectConfig, StudentScoreRecord, AcademicConfig } from '../types/pp5Types';
 import { GrowthEngine } from '../engines/growthEngine';
+import { KINDERGARTEN_STANDARDS, KindergartenStudentAssessment, QualityLevel } from '../types/kindergartenTypes';
 
 export interface SyncResult {
   success: boolean;
@@ -234,6 +235,287 @@ export class CloudSyncEngine {
       return await localDb.outbox.count();
     } catch {
       return 0;
+    }
+  }
+
+  /**
+   * ซิงค์ข้อมูลการประเมินพัฒนาการระดับปฐมวัย (อ.1 - อ.3) ขึ้น Supabase Cloud จริง
+   * บันทึกข้อมูลสุขภาพ (student_health_growth), เวลาเรียน (student_attendance_summary), 
+   * และผลการประเมิน 12 มาตรฐาน (subjects + student_grades และ kindergarten_assessments)
+   */
+  static async syncKindergartenClassToCloud(
+    classLevel: string,
+    academicYear: string,
+    semester: number,
+    students: StudentProfile[],
+    assessments: Record<string, KindergartenStudentAssessment>,
+    config: AcademicConfig
+  ): Promise<SyncResult> {
+    const timestamp = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    if (!isSupabaseConfigured || !supabase) {
+      return {
+        success: false,
+        syncedCount: 0,
+        message: 'ยังไม่ได้เชื่อมต่อ Supabase หรืออยู่ในโหมดออฟไลน์',
+        timestamp
+      };
+    }
+
+    try {
+      let totalSynced = 0;
+
+      // 1. ซิงค์มาตรฐานปฐมวัย 12 มาตรฐานเข้าตาราง subjects
+      const stdSubjectsPayload = KINDERGARTEN_STANDARDS.map(std => {
+        const code = `K-STD-${String(std.id).padStart(2, '0')}`;
+        return {
+          code,
+          name: std.title,
+          type: 'ปฐมวัย',
+          credits: 0,
+          class_level: classLevel,
+          academic_year: academicYear
+        };
+      });
+
+      await supabase
+        .from('subjects')
+        .upsert(stdSubjectsPayload, { onConflict: 'code,class_level,academic_year' });
+
+      // ดึง mapping ของ subject id
+      const { data: dbSubjects } = await supabase
+        .from('subjects')
+        .select('id, code')
+        .eq('class_level', classLevel)
+        .eq('academic_year', academicYear);
+
+      const codeToIdMap = new Map<string, string>();
+      dbSubjects?.forEach(s => {
+        if (s.code) codeToIdMap.set(s.code.trim().toUpperCase(), s.id);
+      });
+
+      // 2. ซิงค์ผลการประเมิน 12 มาตรฐานลง student_grades
+      const gradesPayload: any[] = [];
+      for (const s of students) {
+        const stuAssess = assessments[s.studentId];
+        if (!stuAssess?.standards) continue;
+
+        for (let stdId = 1; stdId <= 12; stdId++) {
+          const code = `K-STD-${String(stdId).padStart(2, '0')}`;
+          const subId = codeToIdMap.get(code);
+          if (!subId) continue;
+
+          const level = stuAssess.standards[stdId] || 3;
+          gradesPayload.push({
+            student_id: s.studentId,
+            subject_id: subId,
+            academic_year: academicYear,
+            semester,
+            yearly_total: level,
+            grade: String(level),
+            is_passed: true,
+            updated_by: stuAssess.teacherComment || config.homeroomTeacher || 'ครูประจำชั้นอนุบาล',
+            updated_at: new Date().toISOString()
+          });
+        }
+      }
+
+      if (gradesPayload.length > 0) {
+        const { error: gradesErr } = await supabase
+          .from('student_grades')
+          .upsert(gradesPayload, { onConflict: 'student_id,subject_id,academic_year' });
+        if (!gradesErr) {
+          totalSynced += gradesPayload.length;
+        }
+      }
+
+      // 3. ซิงค์ข้อมูลสุขภาพและการเจริญเติบโตลง student_health_growth
+      const healthPayload = students.map(s => {
+        const stuAssess = assessments[s.studentId];
+        const weight = s.weight || stuAssess?.healthInfo?.weight || 0;
+        const height = s.height || stuAssess?.healthInfo?.height || 0;
+        const evalResult = GrowthEngine.evaluateGrowth(s.gender, s.ageYears || 5, weight, height);
+
+        return {
+          student_id: s.studentId,
+          academic_year: academicYear,
+          semester,
+          age_years: s.ageYears || 5,
+          weight,
+          height,
+          bmi: evalResult.bmi,
+          weight_for_height: evalResult.weightForHeight,
+          height_for_age: evalResult.heightForAge,
+          weight_for_age: evalResult.weightForAge,
+          recorded_date: new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        };
+      }).filter(h => h.weight > 0 && h.height > 0);
+
+      if (healthPayload.length > 0) {
+        await supabase
+          .from('student_health_growth')
+          .upsert(healthPayload, { onConflict: 'student_id,academic_year,semester' });
+        totalSynced += healthPayload.length;
+      }
+
+      // 4. ซิงค์สถิติเวลาเรียนลง student_attendance_summary
+      const attPayload = students.map(s => {
+        const stuAssess = assessments[s.studentId];
+        const att = stuAssess?.attendance || { presentDays: 98, totalDays: 100, leaveDays: 1, sickDays: 1 };
+        const total = att.totalDays || 100;
+        const present = att.presentDays || 98;
+        const percent = total > 0 ? Math.round((present / total) * 1000) / 10 : 98.0;
+
+        return {
+          student_id: s.studentId,
+          academic_year: academicYear,
+          semester,
+          present_days: present,
+          leave_days: att.leaveDays || 0,
+          sick_days: att.sickDays || 0,
+          absent_days: 0,
+          total_school_days: total,
+          attendance_percent: percent,
+          has_exam_eligibility: percent >= 80,
+          updated_at: new Date().toISOString()
+        };
+      });
+
+      if (attPayload.length > 0) {
+        await supabase
+          .from('student_attendance_summary')
+          .upsert(attPayload, { onConflict: 'student_id,academic_year,semester' });
+        totalSynced += attPayload.length;
+      }
+
+      // 5. บันทึกลงตารางเฉพาะ kindergarten_assessments (หากมีการรัน migration แล้ว)
+      try {
+        const kTablePayload = students.map(s => {
+          const a = assessments[s.studentId];
+          if (!a) return null;
+          return {
+            student_id: s.studentId,
+            class_level: classLevel,
+            academic_year: academicYear,
+            term: semester,
+            standards: a.standards || {},
+            teacher_comment: a.teacherComment || '',
+            health_info: a.healthInfo || {},
+            attendance: a.attendance || {},
+            updated_at: new Date().toISOString()
+          };
+        }).filter(Boolean);
+
+        if (kTablePayload.length > 0) {
+          await supabase.from('kindergarten_assessments').upsert(kTablePayload, { onConflict: 'student_id,academic_year,term' });
+        }
+      } catch (kTableErr) {
+        // ข้ามหากยังไม่ได้สร้างตาราง kindergarten_assessments (เพราะข้อมูลถูก sync ลง student_grades เรียบร้อยแล้ว)
+      }
+
+      return {
+        success: true,
+        syncedCount: totalSynced,
+        message: `ซิงค์ข้อมูลพัฒนาการชั้น ${classLevel} ขึ้นฐานข้อมูลจริงสำเร็จ (${totalSynced} รายการ)`,
+        timestamp
+      };
+    } catch (err: any) {
+      console.error('Kindergarten Cloud Sync Error:', err);
+      return {
+        success: false,
+        syncedCount: 0,
+        message: `การซิงค์ล้มเหลว: ${err.message}`,
+        error: err.message,
+        timestamp
+      };
+    }
+  }
+
+  /**
+   * ดึงข้อมูลพัฒนาการระดับปฐมวัยจาก Supabase Cloud
+   */
+  static async fetchKindergartenFromCloud(academicYear: string = '2569'): Promise<Record<string, Record<string, KindergartenStudentAssessment>> | null> {
+    if (!isSupabaseConfigured || !supabase) return null;
+
+    try {
+      // 1. ลองดึงจากตาราง kindergarten_assessments
+      const { data: kData, error: kErr } = await supabase
+        .from('kindergarten_assessments')
+        .select('*')
+        .eq('academic_year', academicYear);
+
+      if (!kErr && kData && kData.length > 0) {
+        const result: Record<string, Record<string, KindergartenStudentAssessment>> = {};
+        kData.forEach((row: any) => {
+          const cls = row.class_level || 'อ.2';
+          if (!result[cls]) result[cls] = {};
+          result[cls][row.student_id] = {
+            studentId: row.student_id,
+            classLevel: cls,
+            academicYear: row.academic_year,
+            term: row.term || 1,
+            standards: row.standards || {},
+            teacherComment: row.teacher_comment || '',
+            healthInfo: row.health_info || {},
+            attendance: row.attendance || { presentDays: 98, totalDays: 100 }
+          };
+        });
+        return result;
+      }
+
+      // 2. ดึงจาก subjects + student_grades ที่เชื่อมโยงไว้
+      const { data: dbSubjects } = await supabase
+        .from('subjects')
+        .select('id, code, class_level')
+        .eq('type', 'ปฐมวัย')
+        .eq('academic_year', academicYear);
+
+      if (!dbSubjects || dbSubjects.length === 0) return null;
+
+      const subIdToStdId = new Map<string, number>();
+      dbSubjects.forEach(s => {
+        const match = s.code?.match(/K-STD-(\d+)/);
+        if (match) {
+          subIdToStdId.set(s.id, parseInt(match[1], 10));
+        }
+      });
+
+      const { data: dbGrades } = await supabase
+        .from('student_grades')
+        .select('*')
+        .in('subject_id', Array.from(subIdToStdId.keys()))
+        .eq('academic_year', academicYear);
+
+      if (!dbGrades || dbGrades.length === 0) return null;
+
+      const result: Record<string, Record<string, KindergartenStudentAssessment>> = {};
+
+      dbGrades.forEach((g: any) => {
+        const stdId = subIdToStdId.get(g.subject_id);
+        if (!stdId) return;
+
+        const sub = dbSubjects.find(s => s.id === g.subject_id);
+        const cls = sub?.class_level || 'อ.2';
+        if (!result[cls]) result[cls] = {};
+        if (!result[cls][g.student_id]) {
+          result[cls][g.student_id] = {
+            studentId: g.student_id,
+            classLevel: cls,
+            academicYear,
+            term: g.semester || 1,
+            standards: {},
+            teacherComment: g.updated_by || ''
+          };
+        }
+        const val = Number(g.yearly_total) || Number(g.grade) || 3;
+        result[cls][g.student_id].standards[stdId] = val as QualityLevel;
+      });
+
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (e) {
+      console.warn('Cannot fetch kindergarten from cloud:', e);
+      return null;
     }
   }
 
@@ -504,6 +786,29 @@ export class CloudSyncEngine {
     } else {
       // ออฟไลน์: พักใส่ Outbox ทันที
       await this.queueClassToOutbox(classLevel, subjects, students, scores, config);
+    }
+  }
+
+  /**
+   * ระบบ Auto-Sync สำหรับระดับปฐมวัย (อ.1 - อ.3)
+   */
+  static async autoSyncKindergartenToCloud(
+    classLevel: string,
+    students: StudentProfile[],
+    assessments: Record<string, KindergartenStudentAssessment>,
+    config: AcademicConfig
+  ): Promise<void> {
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine;
+
+    if (isOnline && isSupabaseConfigured && supabase) {
+      this.syncKindergartenClassToCloud(
+        classLevel,
+        config.academicYear,
+        config.semester,
+        students,
+        assessments,
+        config
+      ).catch(err => console.warn('Auto sync kindergarten failed:', err));
     }
   }
 

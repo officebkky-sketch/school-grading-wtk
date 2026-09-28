@@ -9,6 +9,8 @@ import { GradingEngine } from '../engines/gradingEngine';
 import { GrowthEngine } from '../engines/growthEngine';
 import { calculateStudentAge, formatThaiBirthDate } from '../utils/studentDateUtils';
 import { sortSubjectsWithGrades } from '../utils/subjectSortUtils';
+import { KindergartenStudentAssessment, QualityLevel } from '../types/kindergartenTypes';
+import { INITIAL_KINDERGARTEN_ASSESSMENTS } from '../data/initialKindergartenData';
 
 export interface StudentOnlineResult {
   student: StudentProfile;
@@ -36,6 +38,7 @@ export interface StudentOnlineResult {
     readingWritingResult: string;
     activityResult: string;
   };
+  kindergartenAssessment?: KindergartenStudentAssessment;
 }
 
 export class StudentSyncService {
@@ -159,7 +162,8 @@ export class StudentSyncService {
     localClassSubjects: Record<string, SubjectConfig[]>,
     academicYear: string = '2569',
     localAttendance?: Record<string, Record<string, AttendanceDetail>>,
-    localHolistic?: Record<string, Record<string, HolisticDetail>>
+    localHolistic?: Record<string, Record<string, HolisticDetail>>,
+    localKindergartenAssessments?: Record<string, Record<string, KindergartenStudentAssessment>>
   ): Promise<{ success: boolean; data?: StudentOnlineResult; message: string }> {
     const cleanNationalId = nationalId.trim().replace(/\D/g, '');
     const cleanStudentId = studentId.trim();
@@ -455,6 +459,87 @@ export class StudentSyncService {
     const rwLabel = holRec?.readingWriting || 'ดีเยี่ยม';
     const actLabel = holRec ? (holRec.activityPassed ? 'ผ่าน' : 'ไม่ผ่าน') : 'ผ่าน';
 
+    // ดึงผลการประเมินพัฒนาการระดับปฐมวัย หากเป็นระดับชั้นอนุบาล (อ.1 - อ.3)
+    let kAssessment: KindergartenStudentAssessment | undefined = undefined;
+    if (foundClassLevel.startsWith('อ.')) {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          // 1. ลองดึงจากตารางเฉพาะ kindergarten_assessments ใน Supabase ก่อน
+          const { data: dbKData } = await supabase
+            .from('kindergarten_assessments')
+            .select('*')
+            .eq('student_id', cleanStudentId)
+            .eq('academic_year', academicYear)
+            .maybeSingle();
+
+          if (dbKData) {
+            kAssessment = {
+              studentId: dbKData.student_id,
+              classLevel: dbKData.class_level || foundClassLevel,
+              academicYear: dbKData.academic_year,
+              term: dbKData.term || 1,
+              standards: dbKData.standards || {},
+              teacherComment: dbKData.teacher_comment || '',
+              healthInfo: dbKData.health_info || {},
+              attendance: dbKData.attendance || { presentDays: 98, totalDays: 100 }
+            };
+          } else {
+            // 2. ดึงจากตาราง subjects + student_grades ของระบบหลัก (Supabase)
+            const { data: kGrades } = await supabase
+              .from('student_grades')
+              .select('yearly_total, grade, updated_by, subjects!inner(code, type)')
+              .eq('student_id', cleanStudentId)
+              .eq('academic_year', academicYear)
+              .eq('subjects.type', 'ปฐมวัย');
+
+            if (kGrades && kGrades.length > 0) {
+              const standards: Record<number, QualityLevel> = {};
+              let teacherComment = '';
+              kGrades.forEach((g: any) => {
+                const match = g.subjects?.code?.match(/K-STD-(\d+)/);
+                if (match) {
+                  const stdId = parseInt(match[1], 10);
+                  standards[stdId] = (Number(g.yearly_total) || Number(g.grade) || 3) as QualityLevel;
+                }
+                if (g.updated_by) teacherComment = g.updated_by;
+              });
+
+              kAssessment = {
+                studentId: cleanStudentId,
+                classLevel: foundClassLevel,
+                academicYear,
+                term: 1,
+                standards,
+                teacherComment
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('Error fetching kindergarten assessment from Supabase:', e);
+        }
+      }
+
+      // หากยังไม่พบบน Supabase ให้ Fallback หาในเครื่อง (Local State / Cache)
+      if (!kAssessment) {
+        if (localKindergartenAssessments?.[foundClassLevel]?.[foundStudent.studentId]) {
+          kAssessment = localKindergartenAssessments[foundClassLevel][foundStudent.studentId];
+        } else {
+          const savedK = typeof localStorage !== 'undefined' ? localStorage.getItem('pp5_kindergarten_assessments') : null;
+          if (savedK) {
+            try {
+              const parsed = JSON.parse(savedK);
+              if (parsed[foundClassLevel]?.[foundStudent.studentId]) {
+                kAssessment = parsed[foundClassLevel][foundStudent.studentId];
+              }
+            } catch {}
+          }
+          if (!kAssessment && INITIAL_KINDERGARTEN_ASSESSMENTS[foundClassLevel]?.[foundStudent.studentId]) {
+            kAssessment = INITIAL_KINDERGARTEN_ASSESSMENTS[foundClassLevel][foundStudent.studentId];
+          }
+        }
+      }
+    }
+
     // ผลการประเมินรอบด้าน (Holistic) & เวลาเรียน
     const result: StudentOnlineResult = {
       student: foundStudent,
@@ -478,7 +563,8 @@ export class StudentSyncService {
         competenciesResult: compLabel,
         readingWritingResult: rwLabel,
         activityResult: actLabel
-      }
+      },
+      kindergartenAssessment: kAssessment
     };
 
     return {

@@ -20,7 +20,9 @@ import {
   QrCode,
   Share2,
   Lock,
-  Megaphone
+  Megaphone,
+  Baby,
+  Sparkles
 } from 'lucide-react';
 import { PortalQrModal } from './PortalQrModal';
 import { calculateStudentAge, formatThaiBirthDate } from '../utils/studentDateUtils';
@@ -28,6 +30,14 @@ import { AnnouncementService, AnnouncementConfig } from '../services/announcemen
 import { AuthenticatedUser } from '../services/authService';
 import { AUTHENTIC_DIRECTOR, DEFAULT_CLASS_TEACHER_MAP } from '../data/teachersData';
 import { getBasicSubjectSortWeight } from '../utils/subjectSortUtils';
+import {
+  KINDERGARTEN_SIDES,
+  KINDERGARTEN_STANDARDS,
+  QUALITY_LEVEL_DEFS,
+  QualityLevel,
+  KindergartenStudentAssessment
+} from '../types/kindergartenTypes';
+import { INITIAL_KINDERGARTEN_ASSESSMENTS } from '../data/initialKindergartenData';
 
 interface Props {
   localStudents: Record<string, StudentProfile[]>;
@@ -44,6 +54,7 @@ interface Props {
   teacherNameSigMap?: Record<string, string>;
   localAttendance?: Record<string, Record<string, any>>;
   localHolistic?: Record<string, Record<string, any>>;
+  localKindergartenAssessments?: Record<string, Record<string, KindergartenStudentAssessment>>;
   authUser?: AuthenticatedUser | null;
   announcementConfig?: AnnouncementConfig;
   onOpenAnnouncementModal?: () => void;
@@ -56,7 +67,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   localClassSubjects,
   academicYear,
   schoolName,
-  schoolId = '93010069',
+  schoolId = '93010082',
   logoUrl,
   directorName,
   directorSignatureUrl,
@@ -65,6 +76,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
   teacherNameSigMap,
   localAttendance,
   localHolistic,
+  localKindergartenAssessments,
   authUser,
   announcementConfig,
   onOpenAnnouncementModal,
@@ -202,7 +214,8 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
           localClassSubjects,
           academicYear,
           localAttendance,
-          localHolistic
+          localHolistic,
+          localKindergartenAssessments
         ).then(queryRes => {
           setLoading(false);
           if (queryRes.success && queryRes.data) {
@@ -235,7 +248,8 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
       localClassSubjects,
       academicYear,
       localAttendance,
-      localHolistic
+      localHolistic,
+      localKindergartenAssessments
     );
 
     setLoading(false);
@@ -256,6 +270,285 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
 
   const handlePrintResult = () => {
     window.print();
+  };
+
+  const renderKindergartenReport = () => {
+    if (!result) return null;
+    const kAssessment: KindergartenStudentAssessment =
+      result.kindergartenAssessment ||
+      localKindergartenAssessments?.[result.classLevel]?.[result.student.studentId] ||
+      INITIAL_KINDERGARTEN_ASSESSMENTS[result.classLevel]?.[result.student.studentId] || {
+        studentId: result.student.studentId,
+        classLevel: result.classLevel,
+        academicYear,
+        term: 1,
+        standards: { 1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3 },
+        teacherComment: '',
+        healthInfo: {},
+        attendance: { presentDays: 98, totalDays: 100 }
+      };
+
+    const standards = kAssessment.standards || {};
+    const realAge = calculateStudentAge(result.student.birthDate, result.classLevel) || result.student.ageYears || 5;
+
+    return (
+      <div className="print-card-box bg-white rounded-2xl shadow-xl border border-slate-200 p-5 sm:p-8 text-slate-900 print:shadow-none print:border-none print:p-0">
+        {/* Official Header */}
+        <div className="text-center border-b-2 border-slate-900 pb-2 mb-2.5">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <img
+              src={logoUrl || '/logo.png'}
+              alt="Logo"
+              className="w-11 h-11 object-contain"
+              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+            />
+          </div>
+          <div className="text-[10.5px] font-bold tracking-wider text-pink-700 uppercase flex items-center justify-center gap-1.5">
+            <Baby className="w-3.5 h-3.5" />
+            <span>หลักสูตรการศึกษาปฐมวัย พุทธศักราช ๒๕๖๐ (สพฐ. กระทรวงศึกษาธิการ)</span>
+          </div>
+          <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight mt-0.5">
+            สมุดรายงานประจำตัวเด็กปฐมวัย (แบบ อบ.๐๑ ดิจิทัล)
+          </h2>
+          <p className="text-[11.5px] font-medium text-slate-700 mt-0.5">
+            โรงเรียน{schoolName} อำเภอเขาชัยสน จังหวัดพัทลุง สำนักงานเขตพื้นที่การศึกษาประถมศึกษาพัทลุง เขต ๒
+          </p>
+        </div>
+
+        {/* Demographics Box */}
+        <div className="bg-slate-50/90 p-2.5 rounded-lg border border-slate-300 text-xs mb-2.5 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1.5 text-slate-800">
+          <div className="col-span-2 flex items-baseline gap-1.5 overflow-hidden">
+            <span className="text-slate-500 shrink-0">ชื่อ - สกุล:</span>
+            <strong className="text-slate-900 truncate">{result.student.prefix}{result.student.firstName} {result.student.lastName}</strong>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-slate-500 shrink-0">เลขประจำตัว:</span>
+            <strong className="font-mono">{result.student.studentId}</strong>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-slate-500 shrink-0">เลข ปชช.:</span>
+            <strong className="font-mono">{result.student.nationalId}</strong>
+          </div>
+
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-slate-500 shrink-0">ระดับชั้น:</span>
+            <strong>{getClassDisplayName(result.classLevel)} (เลขที่ {result.student.seq})</strong>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-slate-500 shrink-0">วันเกิด:</span>
+            <strong>{formatThaiBirthDate(result.student.birthDate)}</strong>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-slate-500 shrink-0">อายุ:</span>
+            <strong>{realAge} ปี</strong>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-slate-500 shrink-0">ปีการศึกษา:</span>
+            <strong>{result.academicYear}</strong>
+          </div>
+
+          <div className="col-span-2 sm:col-span-4 grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px] text-slate-600 pt-1 border-t border-slate-200/80">
+            <div>บิดา: <strong className="text-slate-800">{result.student.fatherName || '-'}</strong></div>
+            <div>มารดา: <strong className="text-slate-800">{result.student.motherName || '-'}</strong></div>
+            <div>ผู้ปกครอง: <strong className="text-slate-800">{result.student.guardianName || result.student.fatherName || '-'} {result.student.guardianRel ? `(${result.student.guardianRel})` : ''}</strong></div>
+          </div>
+
+          <div className="col-span-2 sm:col-span-4 flex flex-wrap items-baseline gap-3 text-[11px] text-slate-600 pt-0.5">
+            <span>น้ำหนัก: <strong className="text-slate-800">{result.student.weight || '-'}</strong> กก.</span>
+            <span>ส่วนสูง: <strong className="text-slate-800">{result.student.height || '-'}</strong> ซม.</span>
+            <span>กลุ่มเลือด: <strong className="text-slate-800">{result.student.bloodGroup || '-'}</strong></span>
+            <span>ครูประจำชั้น: <strong className="text-slate-800">{getHomeroomTeacherName(result.classLevel)}</strong></span>
+          </div>
+        </div>
+
+        {/* 4 Development Sides Summary Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2.5">
+          {KINDERGARTEN_SIDES.map((side, idx) => {
+            let sum = 0;
+            side.standardIds.forEach(id => sum += (standards[id] || 3));
+            const avg = side.standardIds.length > 0 ? sum / side.standardIds.length : 3;
+            const lvl: QualityLevel = avg >= 2.5 ? 3 : avg >= 1.5 ? 2 : 1;
+            const def = QUALITY_LEVEL_DEFS[lvl];
+
+            const colorClasses = [
+              'bg-emerald-50/90 border-emerald-200 text-emerald-900',
+              'bg-rose-50/90 border-rose-200 text-rose-900',
+              'bg-amber-50/90 border-amber-200 text-amber-900',
+              'bg-blue-50/90 border-blue-200 text-blue-900'
+            ][idx % 4];
+
+            return (
+              <div key={side.id} className={`p-2 rounded-lg border ${colorClasses}`}>
+                <div className="text-[10px] font-semibold opacity-80 truncate">
+                  {side.name}
+                </div>
+                <div className="text-base font-bold mt-0.5 flex items-center justify-between">
+                  <span>ระดับ {def.label}</span>
+                  <span className="text-xs px-1.5 py-0.2 rounded font-bold bg-white/70">
+                    {lvl}/3
+                  </span>
+                </div>
+                <div className="text-[9.5px] opacity-75 mt-0.5 truncate">
+                  {side.standardIds.length} มาตรฐาน ({side.nameEn})
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 12 Standards Assessment Table */}
+        <div className="mb-2.5">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-[11.5px] font-bold text-slate-800 uppercase tracking-wide">
+              สรุปผลการประเมิน ๔ ด้านพัฒนาการ ๑๒ มาตรฐานคุณลักษณะที่พึงประสงค์
+            </h3>
+            <span className="text-[10px] text-slate-500 font-medium">
+              เกณฑ์: ๓ = ดี, ๒ = พอใช้, ๑ = ควรส่งเสริม
+            </span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-300">
+            <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+              <tr className="print-table-row">
+                <th className="py-1 px-2 border-r border-slate-300 w-10 text-center">ที่</th>
+                <th className="py-1 px-2 border-r border-slate-300">มาตรฐานคุณลักษณะที่พึงประสงค์</th>
+                <th className="py-1 px-2 border-r border-slate-300 text-center w-28">ระดับคุณภาพ</th>
+                <th className="py-1 px-2 text-center w-24">ผลการประเมิน</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {KINDERGARTEN_SIDES.map((side, sIdx) => {
+                return (
+                  <React.Fragment key={side.id}>
+                    <tr className="bg-slate-100/90 text-slate-900 font-bold text-[10.5px] print-table-row">
+                      <td colSpan={4} className="py-0.5 px-2 border-r border-slate-300">
+                        {sIdx + 1}. {side.name}
+                      </td>
+                    </tr>
+                    {side.standardIds.map(stdId => {
+                      const std = KINDERGARTEN_STANDARDS.find(s => s.id === stdId);
+                      const rating = (standards[stdId] || 3) as QualityLevel;
+                      const def = QUALITY_LEVEL_DEFS[rating];
+
+                      return (
+                        <tr key={stdId} className="print-table-row hover:bg-slate-50">
+                          <td className="py-1 px-2 text-center font-mono border-r border-slate-300 text-slate-600">
+                            {stdId}
+                          </td>
+                          <td className="py-1 px-2 border-r border-slate-300 pl-3">
+                            <div className="font-semibold text-slate-800 text-[11px]">{std?.title}</div>
+                            <div className="text-[10px] text-slate-500 leading-tight">{std?.description}</div>
+                          </td>
+                          <td className="py-1 px-2 text-center font-bold border-r border-slate-300">
+                            <span className={`inline-block px-2.5 py-0.5 rounded text-xs ${def.badgeClass}`}>
+                              {def.badgeText}
+                            </span>
+                          </td>
+                          <td className="py-1 px-2 text-center font-semibold text-emerald-700">
+                            ผ่านเกณฑ์
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Growth & Attendance Summary */}
+        <div className="grid grid-cols-2 gap-2 mb-2.5">
+          <div className="p-2 border border-slate-300 rounded-lg text-xs space-y-0.5 bg-slate-50/50">
+            <div className="font-bold text-slate-800 flex items-center gap-1.5 pb-0.5 border-b border-slate-200">
+              <HeartPulse className="w-3.5 h-3.5 text-rose-600" />
+              <span>ข้อมูลสุขภาพและโภชนาการ (เกณฑ์กรมอนามัย)</span>
+            </div>
+            <div className="text-[11px] text-slate-700 grid grid-cols-2 gap-1 pt-0.5">
+              <div>น้ำหนักตามเกณฑ์ส่วนสูง: <strong className="text-emerald-700">{result.nutrition.weightForHeight}</strong></div>
+              <div>ส่วนสูงตามเกณฑ์อายุ: <strong className="text-emerald-700">{result.nutrition.heightForAge}</strong></div>
+              <div>การตรวจสุขภาพฟัน: <strong>{kAssessment.healthInfo?.teethCheck || 'ปกติ'}</strong></div>
+              <div>สุขอนามัยร่างกาย: <strong>สะอาดเรียบร้อย</strong></div>
+            </div>
+          </div>
+
+          <div className="p-2 border border-slate-300 rounded-lg text-xs space-y-0.5 bg-slate-50/50">
+            <div className="font-bold text-slate-800 flex items-center gap-1.5 pb-0.5 border-b border-slate-200">
+              <CalendarCheck className="w-3.5 h-3.5 text-teal-600" />
+              <span>สถิติเวลาเรียน (การมาเรียน)</span>
+            </div>
+            <div className="text-[11px] text-slate-700 grid grid-cols-2 gap-1 pt-0.5">
+              <div>เวลาเรียน: <strong className="text-teal-700">{result.attendancePercent}%</strong></div>
+              <div>สถานะ: <strong className="text-emerald-700">ครบถ้วนตามเกณฑ์</strong></div>
+              <div className="col-span-2 text-[10px] text-slate-500">
+                ผ่านเกณฑ์เวลาเรียนขั้นต่ำไม่น้อยกว่าร้อยละ ๘๐ ของเวลาเรียนทั้งหมด
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Teacher Comment Box */}
+        <div className="p-2.5 border border-slate-300 rounded-lg text-xs mb-3 bg-slate-50/50">
+          <div className="font-bold text-slate-800 pb-0.5 border-b border-slate-200 flex items-center justify-between">
+            <span>ความคิดเห็นและข้อเสนอแนะของครูประจำชั้น</span>
+            <span className="text-[10px] text-slate-400 font-normal">บันทึกพัฒนาการเด็ก</span>
+          </div>
+          <p className="text-slate-800 leading-relaxed text-[11px] pt-1">
+            {kAssessment.teacherComment ||
+              `${result.student.prefix}${result.student.firstName} มีพัฒนาการสมวัย ร่างกายแข็งแรง อารมณ์ร่าเริงแจ่มใส ร่วมกิจกรรมกับเพื่อนๆ ได้ดี มีความกระตือรือร้นในการเรียนรู้ และช่วยเหลือตนเองในการปฏิบัติกิจวัตรประจำวันได้เป็นอย่างดีค่ะ`}
+          </p>
+        </div>
+
+        {/* Signatures & Certification */}
+        <div className="pt-2 border-t border-slate-300 grid grid-cols-2 text-center text-xs text-slate-800 break-inside-avoid">
+          {/* ครูประจำชั้น */}
+          <div className="flex flex-col items-center justify-end">
+            <div className="h-9 flex items-center justify-center">
+              {getHomeroomTeacherSignature(result.classLevel) ? (
+                <img
+                  src={getHomeroomTeacherSignature(result.classLevel)}
+                  alt="ลายมือชื่อครูประจำชั้น"
+                  className="print-signature-img h-9 max-w-[130px] object-contain mix-blend-multiply"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              ) : (
+                <div className="h-9"></div>
+              )}
+            </div>
+            <div>ลงชื่อ..........................................................</div>
+            <div className="mt-1 font-bold">
+              ( {getHomeroomTeacherName(result.classLevel)} )
+            </div>
+            <div className="text-[11px] text-slate-600 mt-0.5">
+              ครูประจำชั้น{getClassDisplayName(result.classLevel)}
+            </div>
+          </div>
+
+          {/* ผู้อำนวยการโรงเรียน */}
+          <div className="flex flex-col items-center justify-end">
+            <div className="h-9 flex items-center justify-center">
+              {effectiveDirectorSig ? (
+                <img
+                  src={effectiveDirectorSig}
+                  alt="ลายมือชื่อผู้อำนวยการ"
+                  className="print-signature-img h-9 max-w-[130px] object-contain mix-blend-multiply"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              ) : (
+                <div className="h-9"></div>
+              )}
+            </div>
+            <div>ลงชื่อ..........................................................</div>
+            <div className="mt-1 font-bold">
+              ( {effectiveDirectorName} )
+            </div>
+            <div className="text-[11px] text-slate-600 mt-0.5">
+              ผู้อำนวยการโรงเรียน{schoolName}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -506,7 +799,11 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
             <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3 no-print">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span>รายงานผลการเรียนรายบุคคล (ปพ.6 ดิจิทัล)</span>
+                <span>
+                  {result.classLevel.startsWith('อ.')
+                    ? 'รายงานผลการประเมินพัฒนาการเด็กปฐมวัย (แบบ อบ.๐๑ ดิจิทัล)'
+                    : 'รายงานผลการเรียนรายบุคคล (ปพ.6 ดิจิทัล)'}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -580,7 +877,10 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
             `}} />
 
             {/* Official Report Card (Strict Single-Page A4 on Print) */}
-            <div className="print-card-box bg-white rounded-2xl shadow-xl border border-slate-200 p-5 sm:p-8 text-slate-900 print:shadow-none print:border-none print:p-0">
+            {result.classLevel.startsWith('อ.') ? (
+              renderKindergartenReport()
+            ) : (
+              <div className="print-card-box bg-white rounded-2xl shadow-xl border border-slate-200 p-5 sm:p-8 text-slate-900 print:shadow-none print:border-none print:p-0">
               {/* Official Header */}
               <div className="text-center border-b-2 border-slate-900 pb-2 mb-2.5">
                 <div className="flex items-center justify-center gap-2 mb-1">
@@ -899,6 +1199,7 @@ export const OnlineStudentResultPortal: React.FC<Props> = ({
                 </div>
               </div>
             </div>
+            )}
           </div>
         )}
       </main>

@@ -23,6 +23,10 @@ import { HealthGrowthStudioTab } from './components/HealthGrowthStudioTab';
 import { AttendanceTrackerTab } from './components/AttendanceTrackerTab';
 import { HolisticAssessmentTab } from './components/HolisticAssessmentTab';
 import { PrintableStudioTab } from './components/PrintableStudioTab';
+import { KindergartenAssessmentTab } from './components/KindergartenAssessmentTab';
+import { KindergartenPrintableTab } from './components/KindergartenPrintableTab';
+import { INITIAL_KINDERGARTEN_ASSESSMENTS } from './data/initialKindergartenData';
+import { KindergartenStudentAssessment } from './types/kindergartenTypes';
 import { sortSubjectConfigs } from './utils/subjectSortUtils';
 import { CloudSyncBar } from './components/CloudSyncBar';
 import { CloudSyncEngine } from './services/syncService';
@@ -39,7 +43,8 @@ import {
   Award,
   Printer,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  Baby
 } from 'lucide-react';
 
 const AUTHENTIC_SCHOOL_LOGO_URL = 'https://hvziwrrgpnlsbhiicmsc.supabase.co/storage/v1/object/public/system/school_logo_1779784358658.jpg';
@@ -167,8 +172,52 @@ export const App: React.FC = () => {
   });
 
   const [activeTab, setActiveTab] = useState<
-    'roster' | 'marksheet' | 'analytics' | 'health' | 'attendance' | 'holistic' | 'print'
+    'roster' | 'marksheet' | 'analytics' | 'health' | 'attendance' | 'holistic' | 'print' | 'k_assessment' | 'k_print'
   >('marksheet');
+
+  // บันทึกการประเมินพัฒนาการระดับปฐมวัย (อ.1 - อ.3) 12 มาตรฐาน 4 ด้าน
+  const [kindergartenAssessments, setKindergartenAssessments] = useState<Record<string, Record<string, KindergartenStudentAssessment>>>(() => {
+    const saved = localStorage.getItem('pp5_kindergarten_assessments');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return { ...INITIAL_KINDERGARTEN_ASSESSMENTS, ...parsed };
+      } catch {}
+    }
+    return INITIAL_KINDERGARTEN_ASSESSMENTS;
+  });
+
+  const handleUpdateKindergartenAssessment = (studentId: string, assessment: KindergartenStudentAssessment) => {
+    setKindergartenAssessments(prev => {
+      const clsData = prev[config.classLevel] || {};
+      const updated = {
+        ...prev,
+        [config.classLevel]: {
+          ...clsData,
+          [studentId]: assessment
+        }
+      };
+      localStorage.setItem(`pp5_kindergarten_assessments_${config.academicYear}`, JSON.stringify(updated));
+      localStorage.setItem('pp5_kindergarten_assessments', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleBulkUpdateKindergartenAssessments = (records: Record<string, KindergartenStudentAssessment>) => {
+    setKindergartenAssessments(prev => {
+      const clsData = prev[config.classLevel] || {};
+      const updated = {
+        ...prev,
+        [config.classLevel]: {
+          ...clsData,
+          ...records
+        }
+      };
+      localStorage.setItem(`pp5_kindergarten_assessments_${config.academicYear}`, JSON.stringify(updated));
+      localStorage.setItem('pp5_kindergarten_assessments', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Students per class (อิงข้อมูลนักเรียนที่มีตัวตนอยู่จริง กรองคนย้ายออก)
   const [classStudents, setClassStudents] = useState<Record<string, StudentProfile[]>>(() => {
@@ -407,6 +456,29 @@ export const App: React.FC = () => {
       setScoresStore(INITIAL_SCORES);
     }
 
+    // โหลดผลประเมินพัฒนาการปฐมวัยจาก Local Cache ประจำปีการศึกษา
+    const cachedYearK = localStorage.getItem(`pp5_kindergarten_assessments_${config.academicYear}`);
+    if (cachedYearK) {
+      try {
+        const parsed = JSON.parse(cachedYearK);
+        if (parsed && Object.keys(parsed).length > 0) {
+          setKindergartenAssessments(parsed);
+        }
+      } catch {}
+    } else if (config.academicYear === '2569') {
+      const baseK = localStorage.getItem('pp5_kindergarten_assessments');
+      if (baseK) {
+        try {
+          const parsed = JSON.parse(baseK);
+          if (parsed && Object.keys(parsed).length > 0) {
+            setKindergartenAssessments({ ...INITIAL_KINDERGARTEN_ASSESSMENTS, ...parsed });
+          }
+        } catch {}
+      }
+    } else {
+      setKindergartenAssessments(INITIAL_KINDERGARTEN_ASSESSMENTS);
+    }
+
     // 2. ดึงข้อมูลคะแนนและรายวิชาล่าสุดของปีการศึกษานั้นจาก Supabase Cloud
     let isSubscribed = true;
     CloudSyncEngine.fetchAllScoresFromCloud(config.academicYear).then((cloudData) => {
@@ -434,6 +506,21 @@ export const App: React.FC = () => {
           return merged;
         });
       }
+    });
+
+    // 3. ดึงข้อมูลประเมินพัฒนาการระดับปฐมวัย (อ.1 - อ.3) จาก Supabase Cloud
+    CloudSyncEngine.fetchKindergartenFromCloud(config.academicYear).then((cloudKData) => {
+      if (!isSubscribed || !cloudKData || Object.keys(cloudKData).length === 0) return;
+      setKindergartenAssessments(prev => {
+        const merged = { ...prev };
+        for (const [cls, stuMap] of Object.entries(cloudKData)) {
+          if (!merged[cls]) merged[cls] = {};
+          merged[cls] = { ...merged[cls], ...stuMap };
+        }
+        localStorage.setItem(`pp5_kindergarten_assessments_${config.academicYear}`, JSON.stringify(merged));
+        localStorage.setItem('pp5_kindergarten_assessments', JSON.stringify(merged));
+        return merged;
+      });
     });
 
     return () => {
@@ -701,6 +788,26 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [scoresStore, config.classLevel, config.academicYear]);
 
+  // Debounced Auto-Sync เมื่อครูปฐมวัยประเมินพัฒนาการ ๑๒ มาตรฐาน (หน่วง 2 วินาทีหลังจากบันทึก)
+  useEffect(() => {
+    if (!config.classLevel.startsWith('อ.')) return;
+    const currentKAssessments = kindergartenAssessments[config.classLevel];
+    if (!currentKAssessments || Object.keys(currentKAssessments).length === 0) return;
+
+    const currentStudents = classStudents[config.classLevel] || INITIAL_ROSTER[config.classLevel] || [];
+
+    const timer = setTimeout(() => {
+      CloudSyncEngine.autoSyncKindergartenToCloud(
+        config.classLevel,
+        currentStudents,
+        currentKAssessments,
+        config
+      );
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [kindergartenAssessments, config.classLevel, config.academicYear]);
+
   const handleUpdateStudentGrowth = (studentId: string, weight: number, height: number) => {
     setClassStudents(prev => {
       const list = prev[config.classLevel] || [];
@@ -749,15 +856,38 @@ export const App: React.FC = () => {
     }));
   };
 
-  const navItems = [
-    { id: 'roster', label: 'ทะเบียนนักเรียน', icon: Users, count: currentStudents.length },
-    { id: 'marksheet', label: 'กรอกคะแนน & ตัดเกรด', icon: BookOpen },
-    { id: 'analytics', label: 'สรุปผลการเรียน & GPA', icon: GraduationCap },
-    { id: 'health', label: 'สุขภาพ & โภชนาการ (BMI)', icon: HeartPulse },
-    { id: 'attendance', label: 'เวลาเรียน', icon: CalendarCheck },
-    { id: 'holistic', label: 'คุณลักษณะ & สมรรถนะ', icon: Award },
-    { id: 'print', label: 'ศูนย์จัดพิมพ์ ปพ.5/ปพ.6', icon: Printer }
-  ];
+  const isKindergarten = config.classLevel.startsWith('อ.');
+
+  // Auto-switch tab if transitioning between Kindergarten and Primary
+  useEffect(() => {
+    if (config.classLevel.startsWith('อ.')) {
+      if (['marksheet', 'analytics', 'holistic', 'print'].includes(activeTab)) {
+        setActiveTab('k_assessment');
+      }
+    } else {
+      if (['k_assessment', 'k_print'].includes(activeTab)) {
+        setActiveTab('marksheet');
+      }
+    }
+  }, [config.classLevel]);
+
+  const navItems = isKindergarten
+    ? [
+        { id: 'roster', label: 'ทะเบียนนักเรียน', icon: Users, count: currentStudents.length },
+        { id: 'k_assessment', label: 'ประเมินพัฒนาการ (อบ.๐๒)', icon: Baby },
+        { id: 'health', label: 'สุขภาพ & โภชนาการ (BMI)', icon: HeartPulse },
+        { id: 'attendance', label: 'เวลาเรียน', icon: CalendarCheck },
+        { id: 'k_print', label: 'พิมพ์สมุดรายงาน แบบ อบ.๐๑', icon: Printer }
+      ]
+    : [
+        { id: 'roster', label: 'ทะเบียนนักเรียน', icon: Users, count: currentStudents.length },
+        { id: 'marksheet', label: 'กรอกคะแนน & ตัดเกรด', icon: BookOpen },
+        { id: 'analytics', label: 'สรุปผลการเรียน & GPA', icon: GraduationCap },
+        { id: 'health', label: 'สุขภาพ & โภชนาการ (BMI)', icon: HeartPulse },
+        { id: 'attendance', label: 'เวลาเรียน', icon: CalendarCheck },
+        { id: 'holistic', label: 'คุณลักษณะ & สมรรถนะ', icon: Award },
+        { id: 'print', label: 'ศูนย์จัดพิมพ์ ปพ.5/ปพ.6', icon: Printer }
+      ];
 
   // If in Online Student / Parent Portal View Mode
   if (viewMode === 'student_portal') {
@@ -769,6 +899,7 @@ export const App: React.FC = () => {
           localClassSubjects={classSubjects}
           localAttendance={attendanceStore}
           localHolistic={holisticStore}
+          localKindergartenAssessments={kindergartenAssessments}
           academicYear={config.academicYear}
           schoolName={config.schoolName}
           schoolId={config.schoolId}
@@ -839,6 +970,7 @@ export const App: React.FC = () => {
         subjects={currentSubjects}
         students={currentStudents}
         scores={currentClassScores}
+        kindergartenAssessments={kindergartenAssessments[config.classLevel] || {}}
         config={config}
         canSync={canEditClass}
       />
@@ -1055,6 +1187,40 @@ export const App: React.FC = () => {
             academicSignatureUrl={academicSignatureUrl}
             attendanceData={attendanceStore[config.classLevel] || {}}
             holisticData={holisticStore[config.classLevel] || {}}
+          />
+        )}
+
+        {activeTab === 'k_assessment' && (
+          <KindergartenAssessmentTab
+            students={currentStudents}
+            classLevel={config.classLevel}
+            academicYear={config.academicYear}
+            semester={config.semester}
+            assessments={kindergartenAssessments[config.classLevel] || {}}
+            onUpdateAssessment={handleUpdateKindergartenAssessment}
+            onBulkUpdateAssessments={handleBulkUpdateKindergartenAssessments}
+            onNavigateToPrint={() => setActiveTab('k_print')}
+            canEdit={canEditClass}
+          />
+        )}
+
+        {activeTab === 'k_print' && (
+          <KindergartenPrintableTab
+            students={currentStudents}
+            classLevel={config.classLevel}
+            academicYear={config.academicYear}
+            semester={config.semester}
+            assessments={kindergartenAssessments[config.classLevel] || {}}
+            logoUrl={schoolLogoUrl}
+            directorName={config.directorName}
+            directorSignatureUrl={directorSignatureUrl}
+            homeroomTeacherName={config.homeroomTeacher}
+            homeroomTeacherSignatureUrl={
+              classTeacherSigMap[config.classLevel] ||
+              teacherNameSigMap[config.homeroomTeacher] ||
+              authUser?.signatureUrl ||
+              ''
+            }
           />
         )}
       </main>
