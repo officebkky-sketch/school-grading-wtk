@@ -127,6 +127,9 @@ export class CloudSyncEngine {
           name: s.name.trim(),
           type: s.type,
           credits: s.credits,
+          hours_per_year: s.hoursPerYear !== undefined ? Number(s.hoursPerYear) : 80,
+          full_score_term1: s.fullScoreTerm1 !== undefined ? Number(s.fullScoreTerm1) : 50,
+          full_score_term2: s.fullScoreTerm2 !== undefined ? Number(s.fullScoreTerm2) : 50,
           class_level: classLevel,
           academic_year: config.academicYear
         });
